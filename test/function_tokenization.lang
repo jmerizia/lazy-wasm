@@ -11,4 +11,8 @@ range n => (
     else [n, (range (sub n 1))]
 )
 
-(print (range 5))
+(print (range 5) a n (sub 1 2))
+([0, nil])
+(nil)
+(-1)
+(a)

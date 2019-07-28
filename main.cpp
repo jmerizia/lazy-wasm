@@ -2,7 +2,8 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
-#include "tokenizer.cpp"
+#include "evaluate.cpp"
+#include "tokenize.cpp"
 #include "helpers.cpp"
 
 int main(int argc, char * argv[])
@@ -15,10 +16,11 @@ int main(int argc, char * argv[])
         error("Input file does not exist.");
     }
     std::vector<struct FileToken> tokens = tokenize_file(f);
+    f.close();
+
     for (struct FileToken token : tokens) {
         std::cout << token.value << " -- " << FileTokenType_map[token.type] << std::endl;
     }
-    f.close();
 
     return 0;
 }
