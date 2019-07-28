@@ -1,0 +1,7 @@
+-- Base Expressions --
+These can be evaluated without sub-expressions:
+(variable)
+(integer)
+(add a b)
+(sub a b)
+(sub a b)

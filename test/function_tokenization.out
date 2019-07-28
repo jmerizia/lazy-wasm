@@ -1,0 +1,4 @@
+print function_declaration_name
+s function_declaration_parameter
+=> function_declaration_arrow
+string123 function_declaration_expression

@@ -1,0 +1,18 @@
+-- print out a generative data structure of integers
+print s => (
+    if (equals s nil) then (nil)
+    else (
+        (print_int s:1);
+        (print s:2)
+    )
+)
+
+-- produce a generative range structure of integers
+range n => (
+    if (equals n 0) then [(nil), (0)]
+    else [(n), (range (sub n 1))]
+)
+
+-- example usage of above functions
+(print (range 3))
+-- should print: 3 2 1 0

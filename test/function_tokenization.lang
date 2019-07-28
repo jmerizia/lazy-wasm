@@ -1,0 +1,14 @@
+print a b => (
+    if (equals s nil) then (nil)
+    else (
+        (print_int s:1);
+        (print s:2)
+    )
+)
+
+range n => (
+    if (equals n 0) then [0, nil]
+    else [n, (range (sub n 1))]
+)
+
+(print (range 5))
