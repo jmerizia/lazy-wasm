@@ -80,15 +80,15 @@ tokenize_expression(std::string s) {
     std::vector<struct ExpressionToken> tokens;
 
     // ternary (required parens): ^\(\s*(if)\s+(.*[^\s])\s*(then)\s*(.*[^\s])\s*(else)\s*(.*[^\s])\s*\)$
-    // function (required parens): ^\s*\(\s*([\w0-9]+)\s+(.+[^\s])\s*\)\s*$
+    // function (required parens): ^\s*\(\s*([\w0-9]+)\s+(.+)\s*\)\s*$
     // pair (optional parens): ^\s*\(?\s*\[\s*(.+)\s*,\s*(.+)\s*\]\s*\)?\s*$
-    // base (required parens): ^\(\s*(-?\d|nil|\w+)\s*\)$
-    // base (no parens): ^\s*(-?\d|nil|\w+)\s*$
+    // base (required parens): ^\s*\(\s*(-?\d+|nil|\w+:?\d?)\s*\)\s*$
+    // base (no parens): ^\s*(-?\d+|nil|\w+:?\d?)\s*$
     std::regex ternary_re ("^\\(\\s*(if)\\s+(.*[^\\s])\\s*(then)\\s*(.*[^\\s])\\s*(else)\\s*(.*[^\\s])\\s*\\)$");
-    std::regex function_re ("^\\s*\\(\\s*([\\w0-9]+)\\s+(.+[^\\s])\\s*\\)\\s*$");
+    std::regex function_re ("^\\s*\\(\\s*([\\w0-9]+)\\s+(.+)\\s*\\)\\s*$");
     std::regex pair_re ("^\\s*\\(?\\s*\\[\\s*(.+)\\s*,\\s*(.+)\\s*\\]\\s*\\)?\\s*$");
-    std::regex base_re ("^\\(\\s*(-?\\d|nil|\\w+)\\s*\\)$");
-    std::regex base_no_parens_re ("^\\s*(-?\\d|nil|\\w+)\\s*$");
+    std::regex base_re ("^\\s*\\(\\s*(-?\\d+|nil|\\w+:?\\d?)\\s*\\)\\s*$");
+    std::regex base_no_parens_re ("^\\s*(-?\\d+|nil|\\w+:?\\d?)\\s*$");
     std::smatch match;
 
     if (std::regex_search(s, match, ternary_re)) {
@@ -203,7 +203,7 @@ tokenize_expression(std::string s) {
     } else {
         std::string msg = "Failed to match expression \"";
         if (s.size() > 30) {
-            msg += s.substr(30);
+            msg += s.substr(0, 30);
             msg += "...";
         } else {
             msg += s;

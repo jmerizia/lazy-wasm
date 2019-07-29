@@ -1,0 +1,6 @@
+f n => (
+    if (equals n 42) then (print_char 98)
+    else (print_char 97)
+)
+
+(f 41)

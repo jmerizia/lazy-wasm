@@ -1,9 +1,9 @@
 print a b => (
-    if (equals s nil) then (nil)
-    else (
-        (print_int s:1);
-        (print s:2)
-    )
+    if (not s) then (nil)
+    else {
+        (print_int s1) ;
+        (print s2)
+    }
 )
 
 range n => (
