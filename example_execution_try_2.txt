@@ -1,37 +1,30 @@
-print r => [ (print_int (1 r)) ; (if (2 r) (print (2 r)) (nil)) ]
+print r => { (print_int (1 r)) ; (if (2 r) (print (2 r)) (nil)) }
 range n => (if (= n 1) [1 ; nil] [n ; (range (- n 1))])
 (print (range 2))
 
--- Let's try lazy eval in data pairs
--- (they evaluate only when they reach the top or are given a specification)
+-- [] = lazy eval
+-- {} = eager eval
 
-main
-|   execute (print (range 2)), 0
-|   |   *A = (range 2)
-|   |   execute [ (print_int (1 *A)) ; (if (2 *A) (print (2 *A)) (nil)) ], 0
-|   |   |   *B = (print_int (1 *A))
-|   |   |   *C = (if (2 *A) (print (2 *A)) (nil))
-|   |   |   return [*B, *C]
-|   |   return [*B, *C]
-|   execute *B, 0
+execute (print (range 2)), 0
+|   *A = (range 2)
+|   execute { (print_int (1 *A)) ; (if (2 *A) (print (2 *A)) (nil)) }, 0
 |   |   execute (print_int (1 *A)), 0
 |   |   |   execute (1 *A), 0
 |   |   |   |   execute *A, 1
 |   |   |   |   |   execute (range 2), 1
-|   |   |   |   |   |   *D = 2
-|   |   |   |   |   |   execute (if (= *D 1) [1 ; nil] [*D ; (range (- *D 1))]), 1
-|   |   |   |   |   |   |   execute (= *D 1), 0
-|   |   |   |   |   |   |   |   execute (= *D 1), 0
-|   |   |   |   |   |   |   |   |   execute *D, 0
-|   |   |   |   |   |   |   |   |   |   execute 2, 0
-|   |   |   |   |   |   |   |   |   |   |   return 2
+|   |   |   |   |   |   *B = 2
+|   |   |   |   |   |   execute (if (= *B 1) [1 ; nil] [*B ; (range (- *B 1))]), 1
+|   |   |   |   |   |   |   execute (= *B 1), 0
+|   |   |   |   |   |   |   |   execute *B, 0
+|   |   |   |   |   |   |   |   |   execute 2, 0
 |   |   |   |   |   |   |   |   |   |   return 2
-|   |   |   |   |   |   |   |   |   execute 1, 0
-|   |   |   |   |   |   |   |   |   |   return 1
-|   |   |   |   |   |   |   |   |   return 0
-|   |   |   |   |   |   |   execute [*D ; (range (- *D 1))], 1
-|   |   |   |   |   |   |   |   execute *D, 0
-|   |   |   |   |   |   |   |   |   return 2  --memoized
+|   |   |   |   |   |   |   |   |   return 2
+|   |   |   |   |   |   |   |   execute 1, 0
+|   |   |   |   |   |   |   |   |   return 1
+|   |   |   |   |   |   |   |   return 0
+|   |   |   |   |   |   |   execute [*B ; (range (- *B 1))], 1
+|   |   |   |   |   |   |   |   execute *B, 0  --cached
+|   |   |   |   |   |   |   |   |   return 2
 |   |   |   |   |   |   |   |   return 2
 |   |   |   |   |   |   |   return 2
 |   |   |   |   |   |   return 2
@@ -39,50 +32,86 @@ main
 |   |   |   |   return 2
 |   |   |   cout 2
 |   |   |   return nil
-|   |   return nil
-|   execute *C, 0
 |   |   execute (if (2 *A) (print (2 *A)) (nil)), 0
-|   |   |   execute (2 *A), 0
+|   |   |   execute (2 *A), 
 |   |   |   |   execute *A, 2
 |   |   |   |   |   execute (range 2), 2
-|   |   |   |   |   |   recall *D = 2  --memoized thunk
-|   |   |   |   |   |   execute (if (= *D 1) [1 ; nil] [*D ; (range (- *D 1))]), 2
-|   |   |   |   |   |   |   execute (= *D 1), 0  --memoized
+|   |   |   |   |   |   *B = 2 --cached thunk
+|   |   |   |   |   |   execute (if (= *B 1) [1 ; nil] [*B ; (range (- *B 1))]), 2
+|   |   |   |   |   |   |   execute (= *B 1), 0
 |   |   |   |   |   |   |   |   return 0
-|   |   |   |   |   |   |   execute [*D ; (range (- *D 1))], 2
-|   |   |   |   |   |   |   |   execute (range (- *D 1)), 0
-|   |   |   |   |   |   |   |   |   *E = (- *D 1)
-|   |   |   |   |   |   |   |   |   execute (if (= *E 1) [1 ; nil] [*E ; (range (- *E 1))]), 0
-|   |   |   |   |   |   |   |   |   |   execute (= *E 1), 0
-|   |   |   |   |   |   |   |   |   |   |   execute *E, 0
-|   |   |   |   |   |   |   |   |   |   |   |   execute (- *D 1)
-|   |   |   |   |   |   |   |   |   |   |   |   |   execute *D  --already forced
-|   |   |   |   |   |   |   |   |   |   |   |   |   |   return 2
-|   |   |   |   |   |   |   |   |   |   |   |   |   execute 1
+|   |   |   |   |   |   |   execute [*B ; (range (- *B 1))], 2
+|   |   |   |   |   |   |   |   execute (range (- *B 1)), 0
+|   |   |   |   |   |   |   |   |   *C = (- *B 1)
+|   |   |   |   |   |   |   |   |   execute (if (= *C 1) [1 ; nil] [*C ; (range (- *C 1))]), 0
+|   |   |   |   |   |   |   |   |   |   execute (= *C 1), 0
+|   |   |   |   |   |   |   |   |   |   |   execute *C, 0
+|   |   |   |   |   |   |   |   |   |   |   |   execute (- *B 1), 0
+|   |   |   |   |   |   |   |   |   |   |   |   |   execute *B, 0
+|   |   |   |   |   |   |   |   |   |   |   |   |   |   return 2  --already forced
+|   |   |   |   |   |   |   |   |   |   |   |   |   execute 1, 0
 |   |   |   |   |   |   |   |   |   |   |   |   |   |   return 1
 |   |   |   |   |   |   |   |   |   |   |   |   |   return 2 - 1 = 1
 |   |   |   |   |   |   |   |   |   |   |   |   return 1
-|   |   |   |   |   |   |   |   |   |   |   execute 1
+|   |   |   |   |   |   |   |   |   |   |   execute 1, 0
 |   |   |   |   |   |   |   |   |   |   |   |   return 1
 |   |   |   |   |   |   |   |   |   |   |   return 1
 |   |   |   |   |   |   |   |   |   |   execute [1 ; nil]
-|   |   |   |   |   |   |   |   |   |   |   *F = 1
-|   |   |   |   |   |   |   |   |   |   |   *G = nil
-|   |   |   |   |   |   |   |   |   |   |   return [*F, *G]
-|   |   |   |   |   |   |   |   |   |   return [*F, *G]
-|   |   |   |   |   |   |   |   |   return [*F, *G]
-|   |   |   |   |   |   |   |   return [*F, *G]
-|   |   |   |   |   |   |   return [*F, *G]
-|   |   |   |   |   |   return [*F, *G]
-|   |   |   |   |   return [*F, *G]
-|   |   |   |   return [*F, *G]
+|   |   |   |   |   |   |   |   |   |   *D = 1
+|   |   |   |   |   |   |   |   |   |   *E = nil
+|   |   |   |   |   |   |   |   |   |   return [*D, *E]
+|   |   |   |   |   |   |   |   |   return [*D, *E]
+|   |   |   |   |   |   |   |   return [*D, *E]
+|   |   |   |   |   |   |   return [*D, *E]
+|   |   |   |   |   |   return [*D, *E]
+|   |   |   |   |   return [*D, *E]
+|   |   |   |   return [*D, *E]  --not nil
 |   |   |   execute (print (2 *A)), 0
-|   |   |   |   *H = (2 *A)
-|   |   |   |   execute [ (print_int (1 *H)) ; (if (2 *H) (print (2 *H)) (nil)) ], 0
-|   |   |   |   |   *I = (print_int (1 *H))
-|   |   |   |   |   *J = (if (2 *H) (print (2 *H)) (nil))
-|   |   |   |   |   return [*I, *J]
-|   |   |   |   return [*I, *J]
-|   |   |   return [*I, *J]
-|   |   return [*I, *J]
-|   execute *I
+|   |   |   |   *F = (2 *A)
+|   |   |   |   execute { (print_int (1 *F)) ; (if (2 *F) (print (2 *F)) (nil)) }, 0
+|   |   |   |   |   execute (print_int (1 *F)), 0
+|   |   |   |   |   |   execute (1 *F), 0
+|   |   |   |   |   |   |   execute *F, 1
+|   |   |   |   |   |   |   |   execute (2 *A), 1  
+|   |   |   |   |   |   |   |   |   execute *A, 2, 1  --cached partially
+|   |   |   |   |   |   |   |   |   |   execute [*D, *E], 1
+|   |   |   |   |   |   |   |   |   |   |   execute *D, 0
+|   |   |   |   |   |   |   |   |   |   |   |   execute 1, 0
+|   |   |   |   |   |   |   |   |   |   |   |   |   return 1
+|   |   |   |   |   |   |   |   |   |   |   |   return 1
+|   |   |   |   |   |   |   |   |   |   |   return 1
+|   |   |   |   |   |   |   |   |   |   return 1
+|   |   |   |   |   |   |   |   |   return 1
+|   |   |   |   |   |   |   |   return 1
+|   |   |   |   |   |   |   return 1
+|   |   |   |   |   |   cout 1
+|   |   |   |   |   |   return nil
+|   |   |   |   |   execute (if (2 *F) (print (2 *F)) (nil)), 0
+|   |   |   |   |   |   execute (2 *F), 0
+|   |   |   |   |   |   |   execute (2 *F), 0
+|   |   |   |   |   |   |   |   execute *F, 2
+|   |   |   |   |   |   |   |   |   execute *F, 2
+|   |   |   |   |   |   |   |   |   |   execute (2 *A), 2
+|   |   |   |   |   |   |   |   |   |   |   execute *A, 2, 2
+|   |   |   |   |   |   |   |   |   |   |   |   execute *A, 2, 2  --cached partially
+|   |   |   |   |   |   |   |   |   |   |   |   |   execute [*D, *E], 2
+|   |   |   |   |   |   |   |   |   |   |   |   |   |   execute *E, 0
+|   |   |   |   |   |   |   |   |   |   |   |   |   |   |   execute nil
+|   |   |   |   |   |   |   |   |   |   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   |   |   |   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   |   |   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   |   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   execute (nil)
+|   |   |   |   |   |   |   return nil
+|   |   |   |   |   |   return nil
+|   |   |   |   |   return { nil ; nil }
+|   |   |   |   return { nil ; nil }
+|   |   |   return { nil ; nil }
+|   |   return { nil ; { nil ; nil } }
+|   return { nil ; { nil ; nil } }
