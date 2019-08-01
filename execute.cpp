@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include "helpers.cpp"
 
 struct ExecutionResult {
     bool is_nil;
@@ -23,60 +24,59 @@ reserved_add(struct ExecutionResult a, struct ExecutionResult b) {
     else return {false, a.value + b.value};
 }
 
-struct ExecutionResult
-reserved_sub(struct ExecutionResult a, struct ExecutionResult b) {
-    if (a.is_nil || b.is_nil) return {true, 0};
-    else return {false, a.value - b.value};
-}
+// struct ExecutionResult
+// reserved_sub(struct ExecutionResult a, struct ExecutionResult b) {
+//     if (a.is_nil || b.is_nil || a.is_datapair || b.is_datapair) return {true, 0};
+//     else return {false, a.value - b.value};
+// }
 
-struct ExecutionResult
-reserved_mul(struct ExecutionResult a, struct ExecutionResult b) {
-    if (a.is_nil || b.is_nil) return {true, 0};
-    else return {false, a.value * b.value};
-}
+// struct ExecutionResult
+// reserved_mul(struct ExecutionResult a, struct ExecutionResult b) {
+//     if (a.is_nil || b.is_nil || a.is_datapair || b.is_datapair) return {true, 0};
+//     else return {false, a.value * b.value};
+// }
 
-struct ExecutionResult
-reserved_div(struct ExecutionResult a, struct ExecutionResult b) {
-    if (a.is_nil || b.is_nil) return {true, 0};
-    else return {false, a.value / b.value};
-}
+// struct ExecutionResult
+// reserved_div(struct ExecutionResult a, struct ExecutionResult b) {
+//     if (a.is_nil || b.is_nil || a.is_datapair || b.is_datapair) return {true, 0};
+//     else return {false, a.value / b.value};
+// }
 
-struct ExecutionResult
-reserved_equals(struct ExecutionResult a, struct ExecutionResult b) {
-    if (a.is_nil && b.is_nil) return {false, 1};
-    if ((a.is_nil && !b.is_nil) || (!a.is_nil && b.is_nil)) return {false, 0};
-    return {false, a.value == b.value};
-}
+// struct ExecutionResult
+// reserved_equals(struct ExecutionResult a, struct ExecutionResult b) {
+//     if (a.is_nil && b.is_nil || a.is_datapair || b.is_datapair) return {false, 1};
+//     if ((a.is_nil && !b.is_nil) || (!a.is_nil && b.is_nil)) return {false, 0};
+//     return {false, a.value == b.value};
+// }
 
 struct ExecutionResult
 reserved_print_int(struct ExecutionResult a) {
-    std::cout << "printing!" << std::endl;
     if (a.is_nil) std::cout << "nil" << std::endl;
     else std::cout << a.value;
     return {true, 0};
 }
 
-struct ExecutionResult
-reserved_print_char(struct ExecutionResult a) {
-    std::cout << "printing!" << std::endl;
-    if (a.is_nil) std::cout << "nil" << std::endl;
-    else std::cout << char(a.value);
-    return {true, 0};
-}
+// struct ExecutionResult
+// reserved_print_char(struct ExecutionResult a) {
+//     std::cout << "printing!" << std::endl;
+//     if (a.is_nil) std::cout << "nil" << std::endl;
+//     else std::cout << char(a.value);
+//     return {true, 0};
+// }
 
 std::map<std::string, std::function<struct ExecutionResult(struct ExecutionResult)>>
 ReservedFunctionsOneInput = {
     {"print_int", reserved_print_int},
-    {"print_char", reserved_print_char},
+    // {"print_char", reserved_print_char},
 };
 
 std::map<std::string, std::function<struct ExecutionResult(struct ExecutionResult, struct ExecutionResult)>>
 ReservedFunctionsTwoInput = {
     {"add", reserved_add},
-    {"sub", reserved_sub},
-    {"mul", reserved_mul},
-    {"div", reserved_div},
-    {"equals", reserved_equals},
+    // {"sub", reserved_sub},
+    // {"mul", reserved_mul},
+    // {"div", reserved_div},
+    // {"equals", reserved_equals},
 };
 
 struct ExecutionResult execute_expression(
@@ -90,7 +90,6 @@ struct ExecutionResult execute_expression(
     datapair,  // [(), ()]
     base,  // no sub-expressions
     */
-    std::cout << "parsing.. " << ExpressionType_map[expression.type] << " : " << expression.base_string << std::endl;
     struct ExecutionResult result;
     switch (expression.type) {
         case ExpressionType::ternary:
@@ -106,16 +105,16 @@ struct ExecutionResult execute_expression(
                 }
                 break;
             }
+
         case ExpressionType::function_call:
             {
                 std::string name = expression.expressions[0].base_string;
-                std::cout << "function call " << name << std::endl;
                 bool matched = false;
                 for (struct Function function : functions) {
                     if (function.name == name) {
                         matched = true;
                         // execute parameters, put results into variables
-                        for (int i = 1; i < expression.expressions.size(); i++) {
+                        for (int i = 1; i < (int)expression.expressions.size(); i++) {
                             print_expression_tree(expression.expressions[i], 1);
                             struct ExecutionResult res =
                                 execute_expression(expression.expressions[i], functions, variables, 0);
@@ -126,6 +125,7 @@ struct ExecutionResult execute_expression(
                         break;
                     }
                 }
+
                 if (!matched) {
                     if (CONTAINS(ReservedFunctionsOneInput, name)) {
                         if (expression.expressions.size() != 2) {
@@ -152,22 +152,36 @@ struct ExecutionResult execute_expression(
                 }
                 break;
             }
+
         case ExpressionType::datapair:
-            break;
+            {
+                if (datapair_side == 1) {
+                    // evaluate right
+                } else if (datapair_side == 2) {
+                    // evaluate left
+                } else {
+                    // evaluate both
+                }
+                break;
+            }
+
         case ExpressionType::base:
             {
                 // int ^\s*-?\d+\s*$
                 // nil ^\s*nil\s*$
+                // pair side ^\s*(\w+):(1|2)\s*$
                 std::regex nil_re ("^\\s*nil\\s*$");
                 std::regex int_re ("^\\s*-?\\d+\\s*$");
+                std::regex pair_side_re ("^\s*(\w+):(1|2)\s*$");
                 std::smatch match;
                 if (std::regex_search(expression.base_string, match, nil_re)) {
                     result = {true, 0};
                 } else if (std::regex_search(expression.base_string, match, int_re)) {
                     result = {false, std::stoi(expression.base_string)};
+                } else if (std::regex_search(expression.base_string, match, pair_side_re)) {
+                    // variable of datapair
                 } else {
                     // variable name
-                    std::cout << "variable name: " << expression.base_string << std::endl;
                     bool matched = false;
                     for (struct Variable variable : variables) {
                         if (variable.name == expression.base_string) {

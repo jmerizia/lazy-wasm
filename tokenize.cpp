@@ -119,18 +119,18 @@ tokenize_expression(std::string s) {
             std::string cur;
             int bracket_count = 0;
             int i;
-            for (i = 0; i < params.size(); i++) {
+            for (i = 0; i < (int)params.size(); i++) {
                 if (bracket_count == 0 /* not in expression */) {
                     if (IS_WHITESPACE(params[i]) && cur.size() > 0) {
                         std::string value = cur;
                         tokens.push_back({cur, ExpressionTokenType::function_call_parameter});
                         cur.clear();
                     }
-                    while (IS_WHITESPACE(params[i]) && i < params.size()) {
+                    while (IS_WHITESPACE(params[i]) && i < (int)params.size()) {
                         i++;
                     }
                 }
-                if (i != params.size()) {
+                if (i != (int)params.size()) {
                     cur += params[i];
                     if (params[i] == '(') {
                         bracket_count++;

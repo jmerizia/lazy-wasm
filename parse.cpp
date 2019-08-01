@@ -60,7 +60,7 @@ parse_expression_string(std::string expression_str) {
     } else if (tokens[0].type == ExpressionTokenType::function_call_name) {
         // function call
         std::vector<struct Expression> sub_expressions = { parse_expression_string(tokens[0].value) };
-        for (int i = 1; i < tokens.size(); i++) {
+        for (int i = 1; i < (int)tokens.size(); i++) {
             sub_expressions.push_back(parse_expression_string(tokens[i].value));
         }
         expression = {ExpressionType::function_call, sub_expressions, ""};
@@ -98,16 +98,16 @@ parse_file(std::ifstream& f) {
     std::vector<struct Expression> expressions;
     std::vector<struct Function> functions;
 
-    for (int i = 0; i < tokens.size(); ) {
+    for (int i = 0; i < (int)tokens.size(); ) {
         if (tokens[i].type == FileTokenType::function_declaration_name) {
             std::string name = tokens[i].value;
             std::vector<std::string> parameters;
             i++;
-            for (; i < tokens.size() && tokens[i].type == FileTokenType::function_declaration_parameter; i++) {
+            for (; i < (int)tokens.size() && tokens[i].type == FileTokenType::function_declaration_parameter; i++) {
                 parameters.push_back(tokens[i].value);
             }
             i++; // skip the arrow
-            if (i == tokens.size() || tokens[i].type != FileTokenType::function_declaration_expression) {
+            if (i == (int)tokens.size() || tokens[i].type != FileTokenType::function_declaration_expression) {
                 std::string msg = "Error parsing function \"";
                 msg += name;
                 msg += "\"";
