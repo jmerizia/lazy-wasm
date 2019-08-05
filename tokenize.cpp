@@ -35,33 +35,27 @@ struct FileToken {
 
 enum class ExpressionTokenType {
     expression,
-    ternary_if,
-    ternary_condition,
-    ternary_then,
-    ternary_first,
-    ternary_else,
-    ternary_second,
     function_call_name,
     function_call_parameter,
-    pair_first,
-    pair_second,
+    lazy_pair_first,
+    lazy_pair_second,
+    eager_pair_first,
+    eager_pair_second,
+    variable,
     base,
     none,
 };
 
 std::map<ExpressionTokenType, std::string> ExpressionTokenType_map = {
     {ExpressionTokenType::expression, "expression"},
-    {ExpressionTokenType::ternary_if, "ternary_if"},
-    {ExpressionTokenType::ternary_condition, "ternary_condition"},
-    {ExpressionTokenType::ternary_then, "ternary_then"},
-    {ExpressionTokenType::ternary_first, "ternary_first"},
-    {ExpressionTokenType::ternary_else, "ternary_else"},
-    {ExpressionTokenType::ternary_second, "ternary_second"},
     {ExpressionTokenType::function_call_name, "function_call_name"},
     {ExpressionTokenType::function_call_parameter,"function_call_parameter"},
-    {ExpressionTokenType::pair_first, "pair_first"},
-    {ExpressionTokenType::pair_second, "pair_second"},
+    {ExpressionTokenType::lazy_pair_first, "lazy_pair_first"},
+    {ExpressionTokenType::lazy_pair_second, "lazy_pair_second"},
+    {ExpressionTokenType::eager_pair_first, "eager_pair_first"},
+    {ExpressionTokenType::eager_pair_second, "eager_pair_second"},
     {ExpressionTokenType::base, "base"},
+    {ExpressionTokenType::variable, "variable"},
     {ExpressionTokenType::none, "none"},
 };
 
@@ -79,48 +73,29 @@ std::vector<struct ExpressionToken>
 tokenize_expression(std::string s) {
     std::vector<struct ExpressionToken> tokens;
 
-    // ternary (required parens): ^\(\s*(if)\s+(.*[^\s])\s*(then)\s*(.*[^\s])\s*(else)\s*(.*[^\s])\s*\)$
     // function (required parens): ^\s*\(\s*([\w0-9]+)\s+(.+)\s*\)\s*$
-    // pair (optional parens): ^\s*\(?\s*\[\s*(.+)\s*,\s*(.+)\s*\]\s*\)?\s*$
-    // base (required parens): ^\s*\(\s*(-?\d+|nil|\w+:?\d?)\s*\)\s*$
-    // base (no parens): ^\s*(-?\d+|nil|\w+:?\d?)\s*$
-    std::regex ternary_re ("^\\(\\s*(if)\\s+(.*[^\\s])\\s*(then)\\s*(.*[^\\s])\\s*(else)\\s*(.*[^\\s])\\s*\\)$");
+    // lazy pair (optional parens): ^\s*\(?\s*\[\s*(.+)\s*;\s*(.+)\s*\]\s*\)?\s*$
+    // data pair (optional parens): ^\s*\(?\s*\{\s*(.+)\s*;\s*(.+)\s*\}\s*\)?\s*$
+    // variable (optional parens): ^\s*\(?\s*(\w+)\s*\)?\s*$
+    // base (optional parens): ^\s*\(?\s*(-?\d+|nil)\s*\)?\s*$
     std::regex function_re ("^\\s*\\(\\s*([\\w0-9]+)\\s+(.+)\\s*\\)\\s*$");
-    std::regex pair_re ("^\\s*\\(?\\s*\\[\\s*(.+)\\s*,\\s*(.+)\\s*\\]\\s*\\)?\\s*$");
-    std::regex base_re ("^\\s*\\(\\s*(-?\\d+|nil|\\w+:?\\d?)\\s*\\)\\s*$");
-    std::regex base_no_parens_re ("^\\s*(-?\\d+|nil|\\w+:?\\d?)\\s*$");
+    std::regex lazy_pair_re ("^\\s*\\(?\\s*\\[\\s*(.+)\\s*;\\s*(.+)\\s*\\]\\s*\\)?\\s*$");
+    std::regex eager_pair_re ("^\\s*\\(?\\s*\\{\\s*(.+)\\s*;\\s*(.+)\\s*\\]\\s*\\)?\\s*$");
+    std::regex variable_re ("^\\s*\\(?\\s*(\\w+)\\s*\\)?\\s*$");
+    std::regex base_re ("^\\s*\\(?\\s*(-?\\d+|nil)\\s*\\)?\\s*$");
     std::smatch match;
 
-    if (std::regex_search(s, match, ternary_re)) {
-        if (match.size() == 7) {
-            tokens.push_back({match.str(1), ExpressionTokenType::ternary_if});
-            tokens.push_back({match.str(2), ExpressionTokenType::ternary_condition});
-            tokens.push_back({match.str(3), ExpressionTokenType::ternary_then});
-            tokens.push_back({match.str(4), ExpressionTokenType::ternary_first});
-            tokens.push_back({match.str(5), ExpressionTokenType::ternary_else});
-            tokens.push_back({match.str(6), ExpressionTokenType::ternary_second});
-        } else {
-            std::string msg = "Invalid expression \"";
-            if (s.size() > 30) {
-                msg += s.substr(30);
-                msg += "...";
-            } else {
-                msg += s;
-            }
-            msg += "\"";
-            error(msg);
-        }
-
-    } else if (std::regex_search(s, match, function_re)) {
+    if (std::regex_search(s, match, function_re)) {
         if (match.size() == 3) {
             tokens.push_back({match.str(1), ExpressionTokenType::function_call_name});
             // need to parse parameters
             std::string params = match.str(2);
             std::string cur;
-            int bracket_count = 0;
+            int soft_bracket_count = 0;
+            int hard_bracket_count = 0;
             int i;
             for (i = 0; i < (int)params.size(); i++) {
-                if (bracket_count == 0 /* not in expression */) {
+                if (soft_bracket_count == 0 && hard_bracket_count == 0 /* not in expression */) {
                     if (IS_WHITESPACE(params[i]) && cur.size() > 0) {
                         std::string value = cur;
                         tokens.push_back({cur, ExpressionTokenType::function_call_parameter});
@@ -133,9 +108,13 @@ tokenize_expression(std::string s) {
                 if (i != (int)params.size()) {
                     cur += params[i];
                     if (params[i] == '(') {
-                        bracket_count++;
+                        soft_bracket_count++;
                     } else if (params[i] == ')') {
-                        bracket_count--;
+                        soft_bracket_count--;
+                    } else if (params[i] == '[') {
+                        hard_bracket_count++;
+                    } else if (params[i] == ']') {
+                        hard_bracket_count--;
                     } else {
                         // we should be looking at a [\w0-9] char
                     }
@@ -157,10 +136,10 @@ tokenize_expression(std::string s) {
             error(msg);
         }
 
-    } else if (std::regex_search(s, match, pair_re)) {
+    } else if (std::regex_search(s, match, lazy_pair_re)) {
         if (match.size() == 3) {
-            tokens.push_back({match.str(1), ExpressionTokenType::pair_first});
-            tokens.push_back({match.str(2), ExpressionTokenType::pair_second});
+            tokens.push_back({match.str(1), ExpressionTokenType::lazy_pair_first});
+            tokens.push_back({match.str(2), ExpressionTokenType::lazy_pair_second});
         } else {
             std::string msg = "Invalid expression \"";
             if (s.size() > 30) {
@@ -172,6 +151,23 @@ tokenize_expression(std::string s) {
             msg += "\"";
             error(msg);
         }
+
+    } else if (std::regex_search(s, match, eager_pair_re)) {
+        if (match.size() == 3) {
+            tokens.push_back({match.str(1), ExpressionTokenType::eager_pair_first});
+            tokens.push_back({match.str(2), ExpressionTokenType::eager_pair_second});
+        } else {
+            std::string msg = "Invalid expression \"";
+            if (s.size() > 30) {
+                msg += s.substr(30);
+                msg += "...";
+            } else {
+                msg += s;
+            }
+            msg += "\"";
+            error(msg);
+        }
+
     } else if (std::regex_search(s, match, base_re)) {
         if (match.size() == 2) {
             tokens.push_back({match.str(1), ExpressionTokenType::base});
@@ -186,9 +182,9 @@ tokenize_expression(std::string s) {
             msg += "\"";
             error(msg);
         }
-    } else if (std::regex_search(s, match, base_no_parens_re)) {
+    } else if (std::regex_search(s, match, variable_re)) {
         if (match.size() == 2) {
-            tokens.push_back({match.str(1), ExpressionTokenType::base});
+            tokens.push_back({match.str(1), ExpressionTokenType::variable});
         } else {
             std::string msg = "Invalid expression \"";
             if (s.size() > 30) {

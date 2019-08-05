@@ -17,16 +17,6 @@ int main(int argc, char * argv[])
         error("Input file does not exist.");
     }
 
-    //struct Expression expression = parse_expression_string("(nil)");
-    //std::vector<struct Function> functions;
-    //std::vector<struct Variable> variables;
-    //struct ExecutionResult result = execute_expression(expression, functions, variables, 0);
-    //if (result.is_nil) {
-    //    std::cout << "nil" << std::endl;
-    //} else {
-    //    std::cout << result.value << std::endl;
-    //}
-
     auto pr = parse_file(f);
     f.close();
 
@@ -43,13 +33,21 @@ int main(int argc, char * argv[])
         print_expression_tree(function.expression, 1);
     }
 
-    std::vector<struct Variable> variables;
-    struct ExecutionResult result = execute_expression(expressions[0], functions, variables, 0);
-    std::cout << "Result: ";
-    if (result.is_nil) {
-        std::cout << "nil" << std::endl;
-    } else {
-        std::cout << result.value << std::endl;
+    for (struct Expression expression : expressions) {
+
+        std::map<std::string, struct Thunk> thunk_store;
+        std::map<std::string, std::string> variable_to_thunk;
+        std::stack<int> datapair_sides;
+        UUID uuid;
+        struct Context context = {
+            functions,
+            thunk_store,
+            variable_to_thunk,
+            datapair_sides,
+            uuid,
+        };
+
+        execute_expression(expression, context);
     }
 
     return 0;

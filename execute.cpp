@@ -1,201 +1,228 @@
 #ifndef _EXECUTE_
 #define _EXECUTE_
 
+#define LOGGING true
+
 #include <vector>
 #include <string>
 #include <map>
 #include "helpers.cpp"
+#include "uuid.cpp"
+
 
 struct ExecutionResult {
     bool is_nil;
     int value;
 };
 
-struct Variable {
-    bool is_nil;
-    int value;
+struct Thunk {
+    struct Expression expression;
+    Optional<struct ExecutionResult> result;
     std::string name;
 };
 
-
-struct ExecutionResult
-reserved_add(struct ExecutionResult a, struct ExecutionResult b) {
-    if (a.is_nil || b.is_nil) return {true, 0};
-    else return {false, a.value + b.value};
-}
-
-// struct ExecutionResult
-// reserved_sub(struct ExecutionResult a, struct ExecutionResult b) {
-//     if (a.is_nil || b.is_nil || a.is_datapair || b.is_datapair) return {true, 0};
-//     else return {false, a.value - b.value};
-// }
-
-// struct ExecutionResult
-// reserved_mul(struct ExecutionResult a, struct ExecutionResult b) {
-//     if (a.is_nil || b.is_nil || a.is_datapair || b.is_datapair) return {true, 0};
-//     else return {false, a.value * b.value};
-// }
-
-// struct ExecutionResult
-// reserved_div(struct ExecutionResult a, struct ExecutionResult b) {
-//     if (a.is_nil || b.is_nil || a.is_datapair || b.is_datapair) return {true, 0};
-//     else return {false, a.value / b.value};
-// }
-
-// struct ExecutionResult
-// reserved_equals(struct ExecutionResult a, struct ExecutionResult b) {
-//     if (a.is_nil && b.is_nil || a.is_datapair || b.is_datapair) return {false, 1};
-//     if ((a.is_nil && !b.is_nil) || (!a.is_nil && b.is_nil)) return {false, 0};
-//     return {false, a.value == b.value};
-// }
-
-struct ExecutionResult
-reserved_print_int(struct ExecutionResult a) {
-    if (a.is_nil) std::cout << "nil" << std::endl;
-    else std::cout << a.value;
-    return {true, 0};
-}
-
-// struct ExecutionResult
-// reserved_print_char(struct ExecutionResult a) {
-//     std::cout << "printing!" << std::endl;
-//     if (a.is_nil) std::cout << "nil" << std::endl;
-//     else std::cout << char(a.value);
-//     return {true, 0};
-// }
-
-std::map<std::string, std::function<struct ExecutionResult(struct ExecutionResult)>>
-ReservedFunctionsOneInput = {
-    {"print_int", reserved_print_int},
-    // {"print_char", reserved_print_char},
+struct Context {
+    std::vector<struct Function>& functions;
+    std::map<std::string, struct Thunk>& thunk_store;
+    std::map<std::string, std::string> variable_to_thunk;
+    std::stack<int> datapair_sides;
+    UUID& uuid;
 };
 
-std::map<std::string, std::function<struct ExecutionResult(struct ExecutionResult, struct ExecutionResult)>>
-ReservedFunctionsTwoInput = {
-    {"add", reserved_add},
-    // {"sub", reserved_sub},
-    // {"mul", reserved_mul},
-    // {"div", reserved_div},
-    // {"equals", reserved_equals},
+struct ExecutionResult execute_expression(struct Expression&, struct Context&);
+
+class SystemFunctions {
+public:
+    static struct ExecutionResult add(struct Thunk a, struct Thunk b, struct Context& context) {
+        // execute both thunks if they haven't been already:
+        if (!a.result.has_value()) {
+            struct ExecutionResult result = execute_expression(a.expression, context);
+            a.result.set(result);
+        }
+        if (!b.result.has_value()) {
+            struct ExecutionResult result = execute_expression(b.expression, context);
+            b.result.set(result);
+        }
+        struct ExecutionResult a_ = a.result.get();
+        struct ExecutionResult b_ = a.result.get();
+        if (a_.is_nil || b_.is_nil) {
+            return {true, 0};
+        } else {
+            return {false, a_.value + b_.value};
+        }
+    }
+
+    static struct ExecutionResult print_int(struct Thunk a, struct Context& context) {
+        // execute thunk if it hasn't been already:
+        if (!a.result.has_value()) {
+            struct ExecutionResult result = execute_expression(a.expression, context);
+            a.result.set(result);
+        }
+        std::cout << a.result.get().value;
+        return {true, 0};
+    }
 };
 
-struct ExecutionResult execute_expression(
-    struct Expression& expression,
-    std::vector<struct Function>& functions,
-    std::vector<struct Variable>& variables,
-    int datapair_side) {
-    /*
-    ternary,  // (if () then () else ())
-    function_call,  // (fname p1 p2 (p3))
-    datapair,  // [(), ()]
-    base,  // no sub-expressions
-    */
+std::map<std::string, std::function<struct ExecutionResult(struct Thunk, struct Context&)>>
+SystemFunctionsOneInput = {
+    {"print_int", SystemFunctions::print_int},
+};
+
+std::map<std::string, std::function<struct ExecutionResult(struct Thunk, struct Thunk, struct Context&)>>
+SystemFunctionsTwoInput = {
+    {"add", SystemFunctions::add},
+};
+
+std::map<std::string, std::function<struct ExecutionResult(struct Thunk, struct Thunk, struct Thunk, struct Context&)>>
+SystemFunctionsThreeInput = {
+};
+
+struct ExecutionResult
+execute_expression(struct Expression& expression, struct Context& context)
+{
+#ifdef LOGGING
+    std::cout << ExpressionType_map[expression.type] << " : " << expression.base_string << std::endl;
+    print_context(context);
+#endif
     struct ExecutionResult result;
     switch (expression.type) {
-        case ExpressionType::ternary:
-            {
-                struct Expression condition = expression.expressions[0];
-                struct Expression first = expression.expressions[1];
-                struct Expression second = expression.expressions[2];
-                struct ExecutionResult result = execute_expression(condition, functions, variables, 0);
-                if (result.is_nil || result.value == 0) {
-                    result = execute_expression(second, functions, variables, 0);
-                } else {
-                    result = execute_expression(first, functions, variables, 0);
-                }
-                break;
-            }
-
         case ExpressionType::function_call:
             {
                 std::string name = expression.expressions[0].base_string;
-                bool matched = false;
-                for (struct Function function : functions) {
-                    if (function.name == name) {
-                        matched = true;
-                        // execute parameters, put results into variables
-                        for (int i = 1; i < (int)expression.expressions.size(); i++) {
-                            print_expression_tree(expression.expressions[i], 1);
-                            struct ExecutionResult res =
-                                execute_expression(expression.expressions[i], functions, variables, 0);
-                            std::string param_name = function.parameters[i-1]; /* name from defn*/
-                            variables.push_back({res.is_nil, res.value, param_name});
-                        }
-                        result = execute_expression(function.expression, functions, variables, 0);
-                        break;
-                    }
+                int num_params_given = expression.expressions.size() - 1;
+                std::vector<struct Thunk> thunked_params;
+                for (int i = 1; i < (int)expression.expressions.size(); i++) {
+                    Optional<struct ExecutionResult> r;
+                    struct Thunk thunk = {expression.expressions[i], r, context.uuid.get()};
+                    thunked_params.push_back(thunk);
+                    context.thunk_store.insert({thunk.name, thunk});
                 }
+                
+                // if it's a 3 input system function:
+                if (CONTAINS(SystemFunctionsThreeInput, name)) {
+                    if (num_params_given != 3) {
+                        std::string msg = "Function ";
+                        msg += name + " requires " + std::to_string(3) + " parameters. ";
+                        msg += name + " requires " + std::to_string(3);
+                        msg += std::to_string(num_params_given) + " parameters given.";
+                        error(msg);
+                    } else {
+                        result = SystemFunctionsThreeInput[name](
+                            thunked_params[0],
+                            thunked_params[1],
+                            thunked_params[2],
+                            context
+                        );
+                    }
 
-                if (!matched) {
-                    if (CONTAINS(ReservedFunctionsOneInput, name)) {
-                        if (expression.expressions.size() != 2) {
-                            std::string msg = "Incorrect number of arguments for function ";
-                            msg += name;
-                            error(msg);
-                        } else {
-                            auto f = ReservedFunctionsOneInput[name];
-                            struct ExecutionResult a = execute_expression(expression.expressions[1], functions, variables, 0);
-                            result = f(a);
+                // if it's a 2 input system function:
+                } else if (CONTAINS(SystemFunctionsTwoInput, name)) {
+                    if (num_params_given != 2) {
+                        std::string msg = "Function ";
+                        msg += name + " requires " + std::to_string(3) + " parameters. ";
+                        msg += name + " requires " + std::to_string(3);
+                        msg += std::to_string(num_params_given) + " parameters given.";
+                        error(msg);
+                    } else {
+                        result = SystemFunctionsTwoInput[name](
+                            thunked_params[0],
+                            thunked_params[1],
+                            context
+                        );
+                    }
+
+                // if it's a 1 input system function:
+                } else if (CONTAINS(SystemFunctionsOneInput, name)) {
+                    if (num_params_given != 1) {
+                        std::string msg = "Function ";
+                        msg += name + " requires " + std::to_string(3) + " parameters. ";
+                        msg += name + " requires " + std::to_string(3);
+                        msg += std::to_string(num_params_given) + " parameters given.";
+                        error(msg);
+                    } else {
+                        result = SystemFunctionsOneInput[name](
+                            thunked_params[0],
+                            context
+                        );
+                    }
+
+                } else {
+                    // check if it's a user defined function:
+                    bool found_match = false;
+                    for (struct Function function : context.functions) {
+                        if (function.name == name) {
+                            if (num_params_given != (int)function.parameters.size()) {
+                                //error
+
+                            } else {
+                                found_match = true;
+                                // add thunks to variable map
+                                for (int i = 0; i < num_params_given; i++) {
+                                    context.variable_to_thunk[function.parameters[i]] = thunked_params[i].name;
+                                }
+                                result = execute_expression(function.expression, context);
+                                break;
+                            }
                         }
-                    } else if (CONTAINS(ReservedFunctionsTwoInput, name)) {
-                        if (expression.expressions.size() != 3) {
-                            std::string msg = "Incorrect number of arguments for function ";
-                            msg += name;
-                            error(msg);
-                        } else {
-                            auto f = ReservedFunctionsTwoInput[name];
-                            struct ExecutionResult a = execute_expression(expression.expressions[1], functions, variables, 0);
-                            struct ExecutionResult b = execute_expression(expression.expressions[2], functions, variables, 0);
-                            result = f(a, b);
-                        }
+                    }
+
+                    if (!found_match) {
+                        std::string msg = "Function " + name + \
+                                           " didn't match any known functions.";
+                        error(msg);
                     }
                 }
                 break;
             }
 
-        case ExpressionType::datapair:
+        case ExpressionType::lazy_pair:
             {
-                if (datapair_side == 1) {
-                    // evaluate right
-                } else if (datapair_side == 2) {
-                    // evaluate left
+                result = {true, 0};
+                break;
+            }
+
+        case ExpressionType::eager_pair:
+            {
+                result = {true, 0};
+                break;
+            }
+
+        case ExpressionType::variable:
+            {
+                std::string name = expression.base_string;
+                if (!CONTAINS(context.variable_to_thunk, name)) {
+                    std::string msg = "Variable " + name + " not defined.";
+                    error(msg);
+                }
+                struct Thunk t = context.thunk_store[context.variable_to_thunk[name]];
+                if (!t.result.has_value()) {
+                    result = execute_expression(t.expression, context);
+                    t.result.set(result);
                 } else {
-                    // evaluate both
+                    result = t.result.get();
                 }
                 break;
             }
 
         case ExpressionType::base:
             {
-                // int ^\s*-?\d+\s*$
-                // nil ^\s*nil\s*$
-                // pair side ^\s*(\w+):(1|2)\s*$
-                std::regex nil_re ("^\\s*nil\\s*$");
-                std::regex int_re ("^\\s*-?\\d+\\s*$");
-                std::regex pair_side_re ("^\s*(\w+):(1|2)\s*$");
+                std::regex integer_re ("^\\s*\\(?\\s*(-?\\d+)\\s*\\)?\\s*$");
+                std::regex nil_re ("^\\s*\\(?\\s*(nil)\\s*\\)?\\s*$");
                 std::smatch match;
-                if (std::regex_search(expression.base_string, match, nil_re)) {
+
+                if (std::regex_search(expression.base_string, match, integer_re)) {
+                    std::string s = match.str(1);
+                    result = {false, std::stoi(s)};
+
+                } else if (std::regex_search(expression.base_string, match, nil_re)) {
                     result = {true, 0};
-                } else if (std::regex_search(expression.base_string, match, int_re)) {
-                    result = {false, std::stoi(expression.base_string)};
-                } else if (std::regex_search(expression.base_string, match, pair_side_re)) {
-                    // variable of datapair
+
                 } else {
-                    // variable name
-                    bool matched = false;
-                    for (struct Variable variable : variables) {
-                        if (variable.name == expression.base_string) {
-                            matched = true;
-                            result = {variable.is_nil, variable.value};
-                            break;
-                        }
-                    }
-                    if (!matched) {
-                        result = {true, 0};
-                    }
+                    std::string msg = "Failed to match expression " + expression.base_string;
+                    error(msg);
                 }
+                break;
             }
-            break;
     }
     return result;
 }

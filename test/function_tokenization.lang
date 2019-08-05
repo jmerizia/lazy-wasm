@@ -1,18 +1,16 @@
-print a b => (
-    if (not s) then (nil)
-    else {
-        (print_int s1) ;
-        (print s2)
-    }
-)
+range a b =>
+    (if (equals a b)
+        [ a ; nil]
+        [ a ; (range (add a 1) b)]
+    )
 
-range n => (
-    if (equals n 0) then [0, nil]
-    else [n, (range (sub n 1))]
-)
+reduce f r => 
+    (if (not (second r))
+        (r)
+        (f
+            (first r)
+            (reduce f (second r))
+        )
+    )
 
-(print (range 5) a n (sub 1 2))
-([0, nil])
-(nil)
-(-1)
-(a)
+(print_int (reduce add (range 1 10)))

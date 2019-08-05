@@ -9,16 +9,18 @@
 #include <map>
 
 enum class ExpressionType {
-    ternary,  // (if () then () else ())
     function_call,  // (fname p1 p2 (p3))
-    datapair,  // [(), ()]
-    base,  // no sub-expressions
+    lazy_pair,  // [() ; ()]
+    eager_pair,  // {() ; ()}
+    variable,  // (a) a
+    base,  // (nil) nil (42) 42
 };
 
 std::map<ExpressionType, std::string> ExpressionType_map = {
-    {ExpressionType::ternary, "ternary"},
     {ExpressionType::function_call, "function_call"},
-    {ExpressionType::datapair, "datapair"},
+    {ExpressionType::lazy_pair, "lazy_pair"},
+    {ExpressionType::eager_pair, "eager_pair"},
+    {ExpressionType::variable, "variable"},
     {ExpressionType::base, "base"},
 };
 
@@ -48,16 +50,7 @@ struct Expression
 parse_expression_string(std::string expression_str) {
     std::vector<struct ExpressionToken> tokens = tokenize_expression(expression_str);
     struct Expression expression;
-    if (tokens[0].type == ExpressionTokenType::ternary_if) {
-        // ternary
-        std::vector<struct Expression> sub_expressions = {
-            parse_expression_string(tokens[1].value),
-            parse_expression_string(tokens[3].value),
-            parse_expression_string(tokens[5].value),
-        };
-        expression = {ExpressionType::ternary, sub_expressions, ""};
-
-    } else if (tokens[0].type == ExpressionTokenType::function_call_name) {
+    if (tokens[0].type == ExpressionTokenType::function_call_name) {
         // function call
         std::vector<struct Expression> sub_expressions = { parse_expression_string(tokens[0].value) };
         for (int i = 1; i < (int)tokens.size(); i++) {
@@ -65,13 +58,26 @@ parse_expression_string(std::string expression_str) {
         }
         expression = {ExpressionType::function_call, sub_expressions, ""};
 
-    } else if (tokens[0].type == ExpressionTokenType::pair_first) {
-        // data pair
+    } else if (tokens[0].type == ExpressionTokenType::lazy_pair_first) {
+        // eager data pair
         std::vector<struct Expression> sub_expressions = {
             parse_expression_string(tokens[0].value),
             parse_expression_string(tokens[1].value),
         };
-        expression = {ExpressionType::datapair, sub_expressions, ""};
+        expression = {ExpressionType::lazy_pair, sub_expressions, ""};
+
+    } else if (tokens[0].type == ExpressionTokenType::eager_pair_first) {
+        // lazy data pair
+        std::vector<struct Expression> sub_expressions = {
+            parse_expression_string(tokens[0].value),
+            parse_expression_string(tokens[1].value),
+        };
+        expression = {ExpressionType::eager_pair, sub_expressions, ""};
+
+    } else if (tokens[0].type == ExpressionTokenType::variable) {
+        // variable
+        std::vector<struct Expression> sub_expressions;
+        expression = {ExpressionType::variable, sub_expressions, tokens[0].value};
 
     } else if (tokens[0].type == ExpressionTokenType::base) {
         // base
@@ -79,7 +85,14 @@ parse_expression_string(std::string expression_str) {
         expression = {ExpressionType::base, sub_expressions, tokens[0].value};
 
     } else {
-        error("Cannot parse tokenized expression.");
+        std::string msg = "Cannot parse tokenized expression: \"";
+        if (expression_str.size() > 30) {
+            msg += expression_str.substr(0, 30);
+        } else {
+            msg += expression_str;
+        }
+        msg += "\"";
+        error(msg);
     }
 
     return expression;
@@ -135,16 +148,13 @@ parse_file(std::ifstream& f) {
 }
 
 void print_expression_tree(struct Expression& expression, int depth) {
-    if (expression.type == ExpressionType::base) {
-        for (int i = 0; i < depth; i++) {
-            std::cout << "  ";
-        }
+    for (int i = 0; i < depth; i++) {
+        std::cout << "  ";
+    }
+    if (expression.type == ExpressionType::base || expression.type == ExpressionType::variable) {
         std::cout << ExpressionType_map[expression.type] << " : ";
         std::cout << expression.base_string << std::endl;
     } else {
-        for (int i = 0; i < depth; i++) {
-            std::cout << "  ";
-        }
         std::cout << ExpressionType_map[expression.type] << std::endl;
         for (struct Expression sub_expression : expression.expressions) {
             print_expression_tree(sub_expression, depth + 1);
