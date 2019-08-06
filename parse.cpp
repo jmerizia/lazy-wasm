@@ -2,19 +2,15 @@
 #define _PARSE_
 
 #include <vector>
-#include "tokenize.cpp"
 #include <string>
 #include <vector>
 #include <fstream>
 #include <map>
+#include <regex>
 
-enum class ExpressionType {
-    function_call,  // (fname p1 p2 (p3))
-    lazy_pair,  // [() ; ()]
-    eager_pair,  // {() ; ()}
-    variable,  // (a) a
-    base,  // (nil) nil (42) 42
-};
+#include "parse.hpp"
+#include "tokenize.hpp"
+#include "helpers.hpp"
 
 std::map<ExpressionType, std::string> ExpressionType_map = {
     {ExpressionType::function_call, "function_call"},
@@ -25,29 +21,9 @@ std::map<ExpressionType, std::string> ExpressionType_map = {
 };
 
 /*
- * A parsed expression that holds reference to
- * its sub-expressions.
- */
-struct Expression {
-    ExpressionType type;
-    std::vector<struct Expression> expressions;
-    std::string base_string;
-};
-
-/*
- * A function object containing a name and an expression.
- */
-struct Function {
-    std::string name;
-    std::vector<std::string> parameters;
-    struct Expression expression;
-};
-
-/*
  * Parse a string into an expression tree.
  */
-struct Expression
-parse_expression_string(std::string expression_str) {
+struct Expression parse_expression_string(std::string expression_str) {
     std::vector<struct ExpressionToken> tokens = tokenize_expression(expression_str);
     struct Expression expression;
     if (tokens[0].type == ExpressionTokenType::function_call_name) {
@@ -102,11 +78,7 @@ parse_expression_string(std::string expression_str) {
 /*
  * Parse a file into a set of expression trees and functions.
  */
-std::pair<
-    std::vector<struct Expression>,
-    std::vector<struct Function>
->
-parse_file(std::ifstream& f) {
+std::pair<std::vector<struct Expression>, std::vector<struct Function>> parse_file(std::ifstream& f) {
     std::vector<struct FileToken> tokens = tokenize_file(f);
     std::vector<struct Expression> expressions;
     std::vector<struct Function> functions;

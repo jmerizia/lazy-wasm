@@ -1,0 +1,11 @@
+f n =>
+    (if (equals n 0)
+        (1)
+        (f
+            (sub n 1)
+        )
+    )
+
+(print_int
+    (f 4)
+)

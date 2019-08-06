@@ -7,17 +7,10 @@
 #include <vector>
 #include <map>
 #include <set>
-#include "helpers.cpp"
 #include <regex>
 
-enum class FileTokenType {
-    function_declaration_name,
-    function_declaration_parameter,
-    function_declaration_arrow,
-    function_declaration_expression,
-    expression,
-    none,
-};
+#include "helpers.hpp"
+#include "tokenize.hpp"
 
 std::map<FileTokenType, std::string> FileTokenType_map = {
     {FileTokenType::function_declaration_name, "function_declaration_name"},
@@ -26,24 +19,6 @@ std::map<FileTokenType, std::string> FileTokenType_map = {
     {FileTokenType::function_declaration_expression, "function_declaration_expression"},
     {FileTokenType::expression, "expression"},
     {FileTokenType::none, "none"},
-};
-
-struct FileToken {
-    std::string value;
-    FileTokenType type;
-};
-
-enum class ExpressionTokenType {
-    expression,
-    function_call_name,
-    function_call_parameter,
-    lazy_pair_first,
-    lazy_pair_second,
-    eager_pair_first,
-    eager_pair_second,
-    variable,
-    base,
-    none,
 };
 
 std::map<ExpressionTokenType, std::string> ExpressionTokenType_map = {
@@ -59,18 +34,11 @@ std::map<ExpressionTokenType, std::string> ExpressionTokenType_map = {
     {ExpressionTokenType::none, "none"},
 };
 
-struct ExpressionToken {
-    std::string value;
-    ExpressionTokenType type;
-};
-
-
 /* 
  * Reads a string and parses it into Tokens.
  * The string must be a valid expression.
  */
-std::vector<struct ExpressionToken>
-tokenize_expression(std::string s) {
+std::vector<struct ExpressionToken> tokenize_expression(std::string s) {
     std::vector<struct ExpressionToken> tokens;
 
     // function (required parens): ^\s*\(\s*([\w0-9]+)\s+(.+)\s*\)\s*$
@@ -214,8 +182,7 @@ tokenize_expression(std::string s) {
 /* 
  * Reads a file and parses it into Tokens.
  */
-std::vector<struct FileToken>
-tokenize_file(std::ifstream& f)
+std::vector<struct FileToken> tokenize_file(std::ifstream& f)
 {
     std::vector<struct FileToken> tokens;
     std::string cur;

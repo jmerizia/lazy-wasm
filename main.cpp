@@ -2,10 +2,13 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
-#include "parse.cpp"
-#include "tokenize.cpp"
-#include "execute.cpp"
-#include "helpers.cpp"
+
+#include "parse.hpp"
+#include "tokenize.hpp"
+#include "execute.hpp"
+#include "helpers.hpp"
+
+#define LOGGING = true
 
 int main(int argc, char * argv[])
 {
@@ -35,19 +38,19 @@ int main(int argc, char * argv[])
 
     for (struct Expression expression : expressions) {
 
-        std::map<std::string, struct Thunk> thunk_store;
+        std::map<std::string, Thunk> thunk_store;
         std::map<std::string, std::string> variable_to_thunk;
         std::stack<int> datapair_sides;
         UUID uuid;
-        struct Context context = {
-            functions,
-            thunk_store,
+        Context context = {
+            &functions,
+            &thunk_store,
             variable_to_thunk,
             datapair_sides,
-            uuid,
+            &uuid,
         };
 
-        execute_expression(expression, context);
+        execute_expression(expression, &context);
     }
 
     return 0;

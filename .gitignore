@@ -1,3 +1,4 @@
-main
+lang
 *.swp
 *.swo
+*.o
