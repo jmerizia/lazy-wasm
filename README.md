@@ -10,6 +10,12 @@ I set out to make a programming language, and this is what I ended up with.
 > features:
 [ ] implement memoization
 [ ] implement lazy/eager data pairs
-[ ] get rid of memory leaks
 [ ] read integer
 [ ] hello world program
+[ ] simple garbage collector
+[ ] add multi-threaded support
+[ ] stop using recursion (instead, use a stack/queue)
+[ ] add comment support
+[ ] pre-processes base expressions in parsing
+> bugs:
+[ ] get rid of memory leaks
