@@ -1,0 +1,7 @@
+tri n =>
+    (if (equals n 0)
+        (0)
+        (add n (tri (sub n 1)))
+    )
+
+(print_int (tri 1000))

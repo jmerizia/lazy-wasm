@@ -1,0 +1,2 @@
+f i => (print_int i)
+(f 42)

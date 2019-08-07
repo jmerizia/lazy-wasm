@@ -6,6 +6,8 @@
 
 #define CONTAINS(s, x) ((s).find(x) != (s).end())
 
+//#define LOGGING
+
 void error(std::string);
 bool IS_WHITESPACE(char);
 std::string TOKENIZER_BAD_TOKEN_ERROR_MESSAGE(int, int, char);

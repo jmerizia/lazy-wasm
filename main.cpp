@@ -8,8 +8,6 @@
 #include "execute.hpp"
 #include "helpers.hpp"
 
-#define LOGGING = true
-
 int main(int argc, char * argv[])
 {
     if (argc < 2) error("No input file specified.");
@@ -27,6 +25,7 @@ int main(int argc, char * argv[])
     std::vector<struct Expression> expressions = pr.first;
     std::vector<struct Function> functions = pr.second;
 
+#ifdef LOGGING
     std::cout << "Expressions:" << std::endl;
     for (struct Expression expression : expressions) {
         print_expression_tree(expression, 1);
@@ -35,22 +34,18 @@ int main(int argc, char * argv[])
     for (struct Function function : functions) {
         print_expression_tree(function.expression, 1);
     }
+#endif
 
     for (struct Expression expression : expressions) {
 
-        std::map<std::string, Thunk> thunk_store;
-        std::map<std::string, std::string> variable_to_thunk;
-        std::stack<int> datapair_sides;
-        UUID uuid;
-        Context context = {
-            &functions,
-            &thunk_store,
-            variable_to_thunk,
-            datapair_sides,
-            &uuid,
-        };
+        Context * context = new Context();
+        for (struct Function function : functions) {
+            context->add_function(function);
+        }
 
-        execute_expression(expression, &context);
+        execute_expression(expression, context, 0);
+
+        delete context;
     }
 
     return 0;

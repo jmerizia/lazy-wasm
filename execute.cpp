@@ -6,25 +6,34 @@
 #include <map>
 #include <functional>
 #include <regex>
+#include <set>
 
 #include "execute.hpp"
 #include "helpers.hpp"
 #include "parse.hpp"
 
+
 class SystemFunctions {
 public:
-    static struct ExecutionResult add(Thunk a, Thunk b, Context * context) {
+    static struct ExecutionResult add(Thunk * a, Thunk * b, Context * context, int depth) {
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "SYSTEM ADD: " << a->name << " " << b->name << std::endl;
+        print_context(context, depth);
+#endif
         // execute both thunks if they haven't been already:
-        if (!a.result.has_value()) {
-            struct ExecutionResult result = execute_expression(a.expression, context);
-            a.result.set(result);
+        if (!a->result.has_value()) {
+            struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+            a->result.set(result);
         }
-        if (!b.result.has_value()) {
-            struct ExecutionResult result = execute_expression(b.expression, context);
-            b.result.set(result);
+        if (!b->result.has_value()) {
+            struct ExecutionResult result = execute_expression(b->expression, b->context, depth + 1);
+            b->result.set(result);
         }
-        struct ExecutionResult a_ = a.result.get();
-        struct ExecutionResult b_ = a.result.get();
+        struct ExecutionResult a_ = a->result.get();
+        struct ExecutionResult b_ = b->result.get();
         if (a_.is_nil || b_.is_nil) {
             return {true, 0};
         } else {
@@ -32,55 +41,170 @@ public:
         }
     }
 
-    static struct ExecutionResult print_int(Thunk a, Context * context) {
-        // execute thunk if it hasn't been already:
-        if (!a.result.has_value()) {
-            struct ExecutionResult result = execute_expression(a.expression, context);
-            a.result.set(result);
+    static struct ExecutionResult sub(Thunk * a, Thunk * b, Context * context, int depth) {
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
         }
-        std::cout << a.result.get().value;
+        std::cout << "SYSTEM SUB: " << a->name << " " << b->name << std::endl;
+        print_context(context, depth);
+#endif
+        // execute both thunks if they haven't been already:
+        if (!a->result.has_value()) {
+            struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+            a->result.set(result);
+        }
+        if (!b->result.has_value()) {
+            struct ExecutionResult result = execute_expression(b->expression, b->context, depth + 1);
+            b->result.set(result);
+        }
+        struct ExecutionResult a_ = a->result.get();
+        struct ExecutionResult b_ = b->result.get();
+        if (a_.is_nil || b_.is_nil) {
+            return {true, 0};
+        } else {
+            return {false, a_.value - b_.value};
+        }
+    }
+
+    static struct ExecutionResult equals(Thunk * a, Thunk * b, Context * context, int depth) {
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "SYSTEM EQUALS: " << a->name << " " << b->name << std::endl;
+        print_context(context, depth);
+#endif
+        // execute both thunks if they haven't been already:
+        if (!a->result.has_value()) {
+            struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+            a->result.set(result);
+        }
+        if (!b->result.has_value()) {
+            struct ExecutionResult result = execute_expression(b->expression, b->context, depth + 1);
+            b->result.set(result);
+        }
+        struct ExecutionResult a_ = a->result.get();
+        struct ExecutionResult b_ = b->result.get();
+        if (a_.is_nil && b_.is_nil) { // both nil
+            return {false, 1};
+        } else if (!a_.is_nil && !b_.is_nil) { // both not nil
+            if (a_.value == b_.value) {
+                return {false, 1};
+            } else {
+                return {false, 0};
+            }
+        } else {
+            return {false, 0};
+        }
+    }
+
+    static struct ExecutionResult print_int(Thunk * a, Context * context, int depth) {
+        // (no need for a new context)
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "SYSTEM PRINT_INT: " << a->name << " " << std::endl;
+        print_context(context, depth);
+#endif
+        // execute thunk if it hasn't been already:
+        if (!a->result.has_value()) {
+            struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+            a->result.set(result);
+        }
+        std::cout << a->result.get().value;
         return {true, 0};
     }
 
-    static struct ExecutionResult _if(Thunk a, Thunk b, Thunk c, Context * context) {
-        return {true, 0};
+    static struct ExecutionResult _if(Thunk * a, Thunk * b, Thunk * c, Context * context, int depth) {
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "SYSTEM IF: " << a->name << " " << b->name << " " << c->name << std::endl;
+        print_context(context, depth);
+#endif
+        // execute the condition
+        if (!a->result.has_value()) {
+            struct ExecutionResult condition_result = execute_expression(a->expression, a->context, depth + 1);
+            a->result.set(condition_result);
+        }
+        struct ExecutionResult cond = a->result.get();
+        struct ExecutionResult result;
+        if (cond.is_nil || cond.value == 0) {
+            // evaluate then clause
+            result = execute_expression(c->expression, c->context, depth + 1);
+        } else {
+            // evaluate else clause
+            result = execute_expression(b->expression, b->context, depth + 1);
+        }
+
+        return result;
     }
 };
 
-std::map<std::string, std::function<struct ExecutionResult(Thunk, Context*)>>
+std::map<std::string, std::function<struct ExecutionResult(Thunk*, Context*, int)>>
 SystemFunctionsOneInput = {
     {"print_int", SystemFunctions::print_int},
 };
 
-std::map<std::string, std::function<struct ExecutionResult(Thunk, Thunk, Context*)>>
+std::map<std::string, std::function<struct ExecutionResult(Thunk*, Thunk*, Context*, int)>>
 SystemFunctionsTwoInput = {
     {"add", SystemFunctions::add},
+    {"sub", SystemFunctions::sub},
+    {"equals", SystemFunctions::equals},
 };
 
-std::map<std::string, std::function<struct ExecutionResult(Thunk, Thunk, Thunk, Context*)>>
+std::map<std::string, std::function<struct ExecutionResult(Thunk*, Thunk*, Thunk*, Context*, int)>>
 SystemFunctionsThreeInput = {
     {"if", SystemFunctions::_if},
 };
 
+int cnt = 0;
+
 struct ExecutionResult
-execute_expression(struct Expression& expression, Context * context)
+execute_expression(struct Expression& expression, Context * context, int depth)
 {
+    cnt ++;
+    if (cnt == 50000) {
+        error("Recursion limit reached :(");
+    }
+    if (cnt % 1000 == 0) {
+        std::cout << "execution count = " << cnt << std::endl;
+    }
 #ifdef LOGGING
-    //std::cout << ExpressionType_map[expression.type] << " : " << expression.base_string << std::endl;
-    //print_context(context);
+    for (int i = 0; i < depth; i++) {
+        std::cout << "  ";
+    }
+    std::cout << "execute" << std::endl;
+    for (int i = 0; i < depth; i++) {
+        std::cout << "  ";
+    }
+    if (expression.type == ExpressionType::function_call) {
+        std::cout << ExpressionType_map[expression.type] << " : " << expression.expressions[0].base_string << std::endl;
+    } else {
+        std::cout << ExpressionType_map[expression.type] << " : " << expression.base_string << std::endl;
+    }
 #endif
+    Context * new_context = new Context(*context);
     struct ExecutionResult result;
     switch (expression.type) {
         case ExpressionType::function_call:
             {
                 std::string name = expression.expressions[0].base_string;
                 int num_params_given = expression.expressions.size() - 1;
-                std::vector<Thunk> thunked_params;
+                std::vector<Thunk*> thunked_params;
                 for (int i = 1; i < (int)expression.expressions.size(); i++) {
                     Optional<struct ExecutionResult> r;
-                    Thunk thunk = {expression.expressions[i], r, context->uuid->get(), *context};
+                    Thunk * thunk = new Thunk(
+                        expression.expressions[i],
+                        r,
+                        new_context->uuid->get(),  // this can be written also as context->uuit->get()
+                        context  // thunk should use the calling context
+                    );
                     thunked_params.push_back(thunk);
-                    context->thunk_store->insert({thunk.name, thunk});
+                    new_context->add_thunk(thunk);
                 }
                 
                 // if it's a 3 input system function:
@@ -91,11 +215,19 @@ execute_expression(struct Expression& expression, Context * context)
                                + std::to_string(num_params_given) + " were given.";
                         error(msg);
                     } else {
+#ifdef LOGGING
+                        for (int i = 0; i < depth; i++) {
+                            std::cout << "  ";
+                        }
+                        std::cout << "3-input system function" << std::endl;
+                        print_context(new_context, depth);
+#endif
                         result = SystemFunctionsThreeInput[name](
                             thunked_params[0],
                             thunked_params[1],
                             thunked_params[2],
-                            context
+                            new_context,
+                            depth
                         );
                     }
 
@@ -107,10 +239,18 @@ execute_expression(struct Expression& expression, Context * context)
                                + std::to_string(num_params_given) + " were given.";
                         error(msg);
                     } else {
+#ifdef LOGGING
+                        for (int i = 0; i < depth; i++) {
+                            std::cout << "  ";
+                        }
+                        std::cout << "2-input system function" << std::endl;
+                        print_context(new_context, depth);
+#endif
                         result = SystemFunctionsTwoInput[name](
                             thunked_params[0],
                             thunked_params[1],
-                            context
+                            new_context,
+                            depth
                         );
                     }
 
@@ -122,16 +262,24 @@ execute_expression(struct Expression& expression, Context * context)
                                + std::to_string(num_params_given) + " were given.";
                         error(msg);
                     } else {
+#ifdef LOGGING
+                        for (int i = 0; i < depth; i++) {
+                            std::cout << "  ";
+                        }
+                        std::cout << "1-input system function" << std::endl;
+                        print_context(new_context, depth);
+#endif
                         result = SystemFunctionsOneInput[name](
                             thunked_params[0],
-                            context
+                            new_context,
+                            depth
                         );
                     }
 
                 } else {
                     // check if it's a user defined function:
                     bool found_match = false;
-                    for (struct Function function : *context->functions) {
+                    for (struct Function function : *new_context->functions) {
                         if (function.name == name) {
                             if (num_params_given != (int)function.parameters.size()) {
                                 //error
@@ -140,9 +288,19 @@ execute_expression(struct Expression& expression, Context * context)
                                 found_match = true;
                                 // add thunks to variable map
                                 for (int i = 0; i < num_params_given; i++) {
-                                    context->variable_to_thunk[function.parameters[i]] = thunked_params[i].name;
+                                    new_context->add_thunk_mapping(
+                                        function.parameters[i],
+                                        thunked_params[i]->name
+                                    );
                                 }
-                                result = execute_expression(function.expression, context);
+#ifdef LOGGING
+                                for (int i = 0; i < depth; i++) {
+                                    std::cout << "  ";
+                                }
+                                std::cout << num_params_given << "-input user defined function" << std::endl;
+                                print_context(new_context, depth);
+#endif
+                                result = execute_expression(function.expression, new_context, depth + 1);
                                 break;
                             }
                         }
@@ -154,6 +312,11 @@ execute_expression(struct Expression& expression, Context * context)
                         error(msg);
                     }
                 }
+                // TODO: clear out thunks from thunk store
+                //for (Thunk * thunk : thunked_params) {
+                //    delete thunk;
+                //}
+                //delete new_context;
                 break;
             }
 
@@ -172,16 +335,23 @@ execute_expression(struct Expression& expression, Context * context)
         case ExpressionType::variable:
             {
                 std::string name = expression.base_string;
-                if (!CONTAINS(context->variable_to_thunk, name)) {
+                if (!CONTAINS(*new_context->variable_to_thunk, name)) {
                     std::string msg = "Variable " + name + " not defined.";
                     error(msg);
                 }
-                Thunk t = (*context->thunk_store)[context->variable_to_thunk[name]];
-                if (!t.result.has_value()) {
-                    result = execute_expression(t.expression, context);
-                    t.result.set(result);
+                Thunk * pt = (*new_context->thunk_store)[(*new_context->variable_to_thunk)[name]];
+#ifdef LOGGING
+                for (int i = 0; i < depth; i++) {
+                    std::cout << "  ";
+                }
+                std::cout << "variable " << name << std::endl;
+                print_context(new_context, depth);
+#endif
+                if (!pt->result.has_value()) {
+                    result = execute_expression(pt->expression, pt->context, depth + 1);
+                    pt->result.set(result);
                 } else {
-                    result = t.result.get();
+                    result = pt->result.get();
                 }
                 break;
             }
@@ -191,6 +361,14 @@ execute_expression(struct Expression& expression, Context * context)
                 std::regex integer_re ("^\\s*\\(?\\s*(-?\\d+)\\s*\\)?\\s*$");
                 std::regex nil_re ("^\\s*\\(?\\s*(nil)\\s*\\)?\\s*$");
                 std::smatch match;
+
+#ifdef LOGGING
+                for (int i = 0; i < depth; i++) {
+                    std::cout << "  ";
+                }
+                std::cout << "base " << expression.base_string << std::endl;
+                print_context(new_context, depth);
+#endif
 
                 if (std::regex_search(expression.base_string, match, integer_re)) {
                     std::string s = match.str(1);
@@ -206,25 +384,63 @@ execute_expression(struct Expression& expression, Context * context)
                 break;
             }
     }
+
+#ifdef LOGGING
+    for (int i = 0; i < depth; i++) {
+        std::cout << "  ";
+    }
+    std::cout << "RET " << result.value << std::endl;
+#endif
     return result;
 }
 
-void print_thunk(Thunk * thunk) {
-    std::cout << "THUNK: " << thunk->name << " -> " << std::endl;
+void print_thunk(Thunk * thunk, int depth) {
+    for (int i = 0; i < depth; i++) {
+        std::cout << "  ";
+    }
+    std::cout << "{THUNK: " << thunk->name << " -> ";
     if (thunk->result.has_value()) {
         std::cout << thunk->result.get().value;
     } else {
-        std::cout << "?" << std::endl;
+        std::cout << "?";
     }
+    std::cout << "}";
 }
 
-void print_context(Context * context) {
+void print_context(Context * pcontext, int depth) {
     // print variables and thunks
-    for (std::pair<std::string, std::string> v_t : context->variable_to_thunk) {
-        Thunk t = (*context->thunk_store)[v_t.second];
+    for (int i = 0; i < depth; i++) {
+        std::cout << "  ";
+    }
+    std::cout << "Current Context:" << std::endl;
+    if (pcontext->variable_to_thunk->empty()) {
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "(empty)" << std::endl;
+    }
+    std::set<std::string> printed;
+    for (std::pair<std::string, std::string> v_t : *pcontext->variable_to_thunk) {
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "|";
+        Thunk * pt = (*pcontext->thunk_store)[v_t.second];
         std::cout << "MAP " << v_t.first << " -> " << v_t.second << " :: ";
-        print_thunk(&t);
+        print_thunk(pt, 0);
         std::cout << std::endl;
+        printed.insert(v_t.second);
+    }
+    for (std::pair<std::string, Thunk*> s_t : *pcontext->thunk_store) {
+        if (!CONTAINS(printed, s_t.second->name)) {
+            for (int i = 0; i < depth; i++) {
+                std::cout << "  ";
+            }
+            std::cout << "|";
+            std::cout << "MAP " << "* -> " << s_t.second->name << " :: ";
+            print_thunk(s_t.second, 0);
+            std::cout << std::endl;
+        }
     }
     // TODO: print data pair sides
 }

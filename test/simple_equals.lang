@@ -1,0 +1,2 @@
+(print_int (equals 1 2))
+(print_int (equals 42 42))
