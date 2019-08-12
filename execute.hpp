@@ -37,18 +37,20 @@ public:
     std::map<std::string, std::string> * variable_to_thunk;
     std::stack<int> * datapair_sides;
     UUID * uuid;
-    Context() {
-        this->functions = new std::vector<struct Function>();
-        this->thunk_store = new std::map<std::string, Thunk*>();
+    Context(
+        std::vector<struct Function> * functions,
+        std::map<std::string, Thunk*> * thunk_store,
+        UUID * uuid
+    ) {
+        this->functions = functions;
+        this->thunk_store = thunk_store;
+        this->uuid = uuid;
         this->variable_to_thunk = new std::map<std::string, std::string>();
         this->datapair_sides = new std::stack<int>();
-        this->uuid = new UUID();
     }
     ~Context() {
-        delete this->functions;
-        delete this->thunk_store;
         delete this->variable_to_thunk;
-        delete this->uuid;
+        delete this->datapair_sides;
     }
     Context(const Context& other) {
         // pass reference
@@ -59,9 +61,6 @@ public:
         this->variable_to_thunk =
             new std::map<std::string, std::string>(*other.variable_to_thunk);
         this->datapair_sides = new std::stack<int>(*other.datapair_sides);
-    }
-    void add_function(struct Function function) {
-        this->functions->push_back(function);
     }
     void add_thunk(Thunk * thunk) {
         (*this->thunk_store)[thunk->name] = thunk;

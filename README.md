@@ -6,6 +6,7 @@ I set out to make a programming language, and this is what I ended up with.
 
 > efficiency:
 
+- [x] do 1000 executions in <1s
 - [ ] do 10000 executions in <1s
 - [ ] do 100000 executions in <1s
 - [ ] do 1000000 executions in <1s
@@ -21,6 +22,9 @@ I set out to make a programming language, and this is what I ended up with.
 - [ ] stop using recursion (instead, use a stack/queue)
 - [ ] add comment support
 - [ ] pre-processes base expressions in parsing
+- [ ] compile in WASM and embed on a website
+- [ ] add types?
+- [ ] add string shorthand
 
 > bugs:
 

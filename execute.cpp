@@ -99,6 +99,91 @@ public:
         }
     }
 
+    static struct ExecutionResult both(Thunk * a, Thunk * b, Context * context, int depth) {
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "SYSTEM BOTH: " << a->name << " " << b->name << std::endl;
+        print_context(context, depth);
+#endif
+        // execute both thunks (eagerly) if they haven't been already:
+        if (!a->result.has_value()) {
+            struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+            a->result.set(result);
+        }
+        if (!b->result.has_value()) {
+            struct ExecutionResult result = execute_expression(b->expression, b->context, depth + 1);
+            b->result.set(result);
+        }
+        return {false, 1};
+    }
+
+    static struct ExecutionResult first(Thunk * a, Context * context, int depth) {
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "SYSTEM FIRST: " << a->name << std::endl;
+        print_context(context, depth);
+#endif
+        Context * new_context = new Context(*context);
+        // add datapair side
+        new_context->datapair_sides->push(1);
+        if (!a->result.has_value()) {
+            struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+            a->result.set(result);
+        }
+        return a->result.get();
+    }
+
+    static struct ExecutionResult second(Thunk * a, Context * context, int depth) {
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "SYSTEM SECOND: " << a->name << std::endl;
+        print_context(context, depth);
+#endif
+        Context * new_context = new Context(*context);
+        // add datapair side
+        new_context->datapair_sides->push(2);
+        if (!a->result.has_value()) {
+            struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+            a->result.set(result);
+        }
+        return a->result.get();
+    }
+
+    static struct ExecutionResult lazy_pair(Thunk * a, Thunk * b, Context * context, int depth) {
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "SYSTEM PAIR: " << a->name << " " << b->name << std::endl;
+        print_context(context, depth);
+#endif
+        if (!context->datapair_sides->empty()) {
+            int side = context->datapair_sides->top();
+            context->datapair_sides->pop();
+            if (side == 1) {
+                if (!a->result.has_value()) {
+                    struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+                    a->result.set(result);
+                }
+                return a->result.get();
+            } else { //side == 2
+                if (!b->result.has_value()) {
+                    struct ExecutionResult result = execute_expression(b->expression, b->context, depth + 1);
+                    b->result.set(result);
+                }
+                return b->result.get();
+            }
+        } else {
+            return {false, 1};
+        }
+    }
+
     static struct ExecutionResult print_int(Thunk * a, Context * context, int depth) {
         // (no need for a new context)
 #ifdef LOGGING
@@ -114,6 +199,24 @@ public:
             a->result.set(result);
         }
         std::cout << a->result.get().value;
+        return {true, 0};
+    }
+
+    static struct ExecutionResult print_char(Thunk * a, Context * context, int depth) {
+        // (no need for a new context)
+#ifdef LOGGING
+        for (int i = 0; i < depth; i++) {
+            std::cout << "  ";
+        }
+        std::cout << "SYSTEM PRINT_CHAR: " << a->name << " " << std::endl;
+        print_context(context, depth);
+#endif
+        // execute thunk if it hasn't been already:
+        if (!a->result.has_value()) {
+            struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+            a->result.set(result);
+        }
+        std::cout << (char)a->result.get().value;
         return {true, 0};
     }
 
@@ -147,6 +250,9 @@ public:
 std::map<std::string, std::function<struct ExecutionResult(Thunk*, Context*, int)>>
 SystemFunctionsOneInput = {
     {"print_int", SystemFunctions::print_int},
+    {"print_char", SystemFunctions::print_char},
+    {"first", SystemFunctions::first},
+    {"second", SystemFunctions::second},
 };
 
 std::map<std::string, std::function<struct ExecutionResult(Thunk*, Thunk*, Context*, int)>>
@@ -154,6 +260,8 @@ SystemFunctionsTwoInput = {
     {"add", SystemFunctions::add},
     {"sub", SystemFunctions::sub},
     {"equals", SystemFunctions::equals},
+    {"pair", SystemFunctions::lazy_pair},
+    {"both", SystemFunctions::both},
 };
 
 std::map<std::string, std::function<struct ExecutionResult(Thunk*, Thunk*, Thunk*, Context*, int)>>
@@ -317,18 +425,6 @@ execute_expression(struct Expression& expression, Context * context, int depth)
                 //    delete thunk;
                 //}
                 //delete new_context;
-                break;
-            }
-
-        case ExpressionType::lazy_pair:
-            {
-                result = {true, 0};
-                break;
-            }
-
-        case ExpressionType::eager_pair:
-            {
-                result = {true, 0};
                 break;
             }
 

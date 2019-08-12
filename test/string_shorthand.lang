@@ -1,0 +1,24 @@
+print_str str => 
+    (if str
+        {   (print_char (first str)) ,
+            (print (second str) }
+        (nil)
+    )
+
+string_equals a b =>
+    (if (and a b))  -- both are defined
+        (if (equals (first a) (first b))  -- 
+            (string_equals (second a) (second b))
+            (0)
+        )
+        (and
+            (equals (a nil))
+            (equals (b nil)
+        )
+    )
+
+shorthand := "Hello, world!"
+my_string := {'H', {'e', {'l', {'l', {'o', {',', {' ', {'w', {'o', {'r', {'l', {'d', nil}}}}}}}}}}}}
+(print_str (shorthand))
+(print_int (my_string))
+(print_bool (string_equals (my_string, shorthand)))

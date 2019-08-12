@@ -12,10 +12,9 @@
 #include "tokenize.hpp"
 #include "helpers.hpp"
 
+
 std::map<ExpressionType, std::string> ExpressionType_map = {
     {ExpressionType::function_call, "function_call"},
-    {ExpressionType::lazy_pair, "lazy_pair"},
-    {ExpressionType::eager_pair, "eager_pair"},
     {ExpressionType::variable, "variable"},
     {ExpressionType::base, "base"},
 };
@@ -33,22 +32,6 @@ struct Expression parse_expression_string(std::string expression_str) {
             sub_expressions.push_back(parse_expression_string(tokens[i].value));
         }
         expression = {ExpressionType::function_call, sub_expressions, ""};
-
-    } else if (tokens[0].type == ExpressionTokenType::lazy_pair_first) {
-        // eager data pair
-        std::vector<struct Expression> sub_expressions = {
-            parse_expression_string(tokens[0].value),
-            parse_expression_string(tokens[1].value),
-        };
-        expression = {ExpressionType::lazy_pair, sub_expressions, ""};
-
-    } else if (tokens[0].type == ExpressionTokenType::eager_pair_first) {
-        // lazy data pair
-        std::vector<struct Expression> sub_expressions = {
-            parse_expression_string(tokens[0].value),
-            parse_expression_string(tokens[1].value),
-        };
-        expression = {ExpressionType::eager_pair, sub_expressions, ""};
 
     } else if (tokens[0].type == ExpressionTokenType::variable) {
         // variable

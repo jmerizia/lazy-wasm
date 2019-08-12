@@ -6,7 +6,7 @@
 
 #define CONTAINS(s, x) ((s).find(x) != (s).end())
 
-//#define LOGGING
+#define LOGGING
 
 void error(std::string);
 bool IS_WHITESPACE(char);

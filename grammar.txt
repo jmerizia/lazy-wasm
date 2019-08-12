@@ -1,8 +1,11 @@
 -- Base Expressions --
-These can be evaluated without sub-expressions:
-(variable)
-(integer)
-(add a b)
-(sub a b)
-(sub a b)
-TODO
+--   These can be evaluated without sub-expressions:
+(x) -- a variable "x"
+(123) -- the integer "123"
+
+-- Function Calls --
+--   Calls a function previously declared:
+(f a b)
+
+-- Lazy Data Pair --
+

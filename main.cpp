@@ -18,9 +18,8 @@ int main(int argc, char * argv[])
         error("Input file does not exist.");
     }
 
-    auto pr = parse_file(f);
+    std::pair<std::vector<struct Expression>, std::vector<struct Function> > pr = parse_file(f);
     f.close();
-
 
     std::vector<struct Expression> expressions = pr.first;
     std::vector<struct Function> functions = pr.second;
@@ -38,11 +37,9 @@ int main(int argc, char * argv[])
 
     for (struct Expression expression : expressions) {
 
-        Context * context = new Context();
-        for (struct Function function : functions) {
-            context->add_function(function);
-        }
-
+        std::map<std::string, Thunk*> thunk_store;
+        UUID uuid;
+        Context * context = new Context(&functions, &thunk_store, &uuid);
         execute_expression(expression, context, 0);
 
         delete context;

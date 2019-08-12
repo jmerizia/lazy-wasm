@@ -9,8 +9,6 @@
 
 enum class ExpressionType {
     function_call,  // (fname p1 p2 (p3))
-    lazy_pair,  // [() ; ()]
-    eager_pair,  // {() ; ()}
     variable,  // (a) a
     base,  // (nil) nil (42) 42
 };
@@ -23,6 +21,8 @@ struct Expression {
     ExpressionType type;
     std::vector<struct Expression> expressions;
     std::string base_string;
+    int int_value;
+    bool is_nil;
 };
 
 /*
