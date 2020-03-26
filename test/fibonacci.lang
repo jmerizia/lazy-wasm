@@ -15,10 +15,9 @@ fib n =>
 
 (print_int (fib 3))
 
-fib n =>
-    if equals n 0 then
-        0
-    else if equals n 1 then 1
-    else add
-        fib subtract n 1
-        fib subtract n 2
+-- fib n =>
+--     if equals n 0 then 0
+--     else if equals n 1 then 1
+--     else add
+--         fib subtract n 1
+--         fib subtract n 2

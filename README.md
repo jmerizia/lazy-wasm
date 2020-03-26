@@ -25,6 +25,7 @@ I set out to make a programming language, and this is what I ended up with.
 - [ ] compile in WASM and embed on a website
 - [ ] add types?
 - [ ] add string shorthand
+- [ ] add parenthesis-free grammar (it's possible!)
 
 > bugs:
 

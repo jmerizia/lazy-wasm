@@ -1,11 +1,38 @@
-print_str str => 
+print_string str =>
     (if str
         (both
-            (print_char (first str))
-            (print (second str)
+            (print_int (first str))
+            (print_string (second str))
         )
-        (nil)
+        nil
     )
 
-(print {72, {101, {108, {108, {111, {44, {32,
-        {119, {111, {114, {108, {100, {33, nil}}}}}}}}}}}}})
+range a b =>
+    (if (equals a b)
+        nil
+        (pair
+            a
+            (range
+                (add a 1)
+                b
+            )
+        )
+    )
+
+(print_string (pair 'a' nil))
+
+-- (print_string
+--     (pair 72
+--     (pair 101
+--     (pair 108
+--     (pair 108
+--     (pair 111
+--     (pair 44
+--     (pair 32
+--     (pair 119
+--     (pair 111
+--     (pair 114
+--     (pair 108
+--     (pair 100
+--     (pair 33 nil)))))))))))))
+-- )

@@ -127,9 +127,8 @@ public:
         std::cout << "SYSTEM FIRST: " << a->name << std::endl;
         print_context(context, depth);
 #endif
-        Context * new_context = new Context(*context);
         // add datapair side
-        new_context->datapair_sides->push(1);
+        a->context->datapair_sides->push(1);
         if (!a->result.has_value()) {
             struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
             a->result.set(result);
@@ -145,9 +144,8 @@ public:
         std::cout << "SYSTEM SECOND: " << a->name << std::endl;
         print_context(context, depth);
 #endif
-        Context * new_context = new Context(*context);
         // add datapair side
-        new_context->datapair_sides->push(2);
+        a->context->datapair_sides->push(2);
         if (!a->result.has_value()) {
             struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
             a->result.set(result);
@@ -163,18 +161,27 @@ public:
         std::cout << "SYSTEM PAIR: " << a->name << " " << b->name << std::endl;
         print_context(context, depth);
 #endif
-        if (!context->datapair_sides->empty()) {
+        Context * new_context = new Context(*context);
+        if (!new_context->datapair_sides->empty()) {
             int side = context->datapair_sides->top();
-            context->datapair_sides->pop();
+#ifdef LOGGING
+            for (int i = 0; i < depth; i++) {
+                std::cout << "  ";
+            }
+            std::cout << "Choosing side: " << side << std::endl;
+#endif
+            new_context->datapair_sides->pop();
+            a->context->datapair_sides->pop();
+            b->context->datapair_sides->pop();
             if (side == 1) {
                 if (!a->result.has_value()) {
-                    struct ExecutionResult result = execute_expression(a->expression, a->context, depth + 1);
+                    struct ExecutionResult result = execute_expression(a->expression, new_context, depth + 1);
                     a->result.set(result);
                 }
                 return a->result.get();
             } else { //side == 2
                 if (!b->result.has_value()) {
-                    struct ExecutionResult result = execute_expression(b->expression, b->context, depth + 1);
+                    struct ExecutionResult result = execute_expression(b->expression, new_context, depth + 1);
                     b->result.set(result);
                 }
                 return b->result.get();
@@ -236,10 +243,10 @@ public:
         struct ExecutionResult cond = a->result.get();
         struct ExecutionResult result;
         if (cond.is_nil || cond.value == 0) {
-            // evaluate then clause
+            // evaluate else clause
             result = execute_expression(c->expression, c->context, depth + 1);
         } else {
-            // evaluate else clause
+            // evaluate then clause
             result = execute_expression(b->expression, b->context, depth + 1);
         }
 
@@ -277,6 +284,9 @@ execute_expression(struct Expression& expression, Context * context, int depth)
     cnt ++;
     if (cnt == 50000) {
         error("Recursion limit reached :(");
+    }
+    if (cnt == 20) {
+        exit(0);
     }
     if (cnt % 1000 == 0) {
         std::cout << "execution count = " << cnt << std::endl;
@@ -456,6 +466,7 @@ execute_expression(struct Expression& expression, Context * context, int depth)
             {
                 std::regex integer_re ("^\\s*\\(?\\s*(-?\\d+)\\s*\\)?\\s*$");
                 std::regex nil_re ("^\\s*\\(?\\s*(nil)\\s*\\)?\\s*$");
+                std::regex char_re ("^\\s*\\(?\\s*'(.+)'\\s*\\)?\\s*$");
                 std::smatch match;
 
 #ifdef LOGGING
@@ -473,6 +484,8 @@ execute_expression(struct Expression& expression, Context * context, int depth)
                 } else if (std::regex_search(expression.base_string, match, nil_re)) {
                     result = {true, 0};
 
+                } else if (std::regex_search(expression.base_string, match, char_re)) {
+                    result = {false, (int)match.str(1)[0]};
                 } else {
                     std::string msg = "Failed to match expression " + expression.base_string;
                     error(msg);

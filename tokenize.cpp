@@ -18,6 +18,7 @@ std::map<FileTokenType, std::string> FileTokenType_map = {
     {FileTokenType::function_declaration_arrow, "function_declaration_arrow"},
     {FileTokenType::function_declaration_expression, "function_declaration_expression"},
     {FileTokenType::expression, "expression"},
+    {FileTokenType::comment, "comment"},
     {FileTokenType::none, "none"},
 };
 
@@ -42,7 +43,7 @@ std::vector<struct ExpressionToken> tokenize_expression(std::string s) {
     // base (optional parens): ^\s*\(?\s*(-?\d+|nil)\s*\)?\s*$
     std::regex function_re ("^\\s*\\(\\s*([\\w0-9]+)\\s+(.+)\\s*\\)\\s*$");
     std::regex variable_re ("^\\s*\\(?\\s*(\\w+)\\s*\\)?\\s*$");
-    std::regex base_re ("^\\s*\\(?\\s*(-?\\d+|nil)\\s*\\)?\\s*$");
+    std::regex base_re ("^\\s*\\(?\\s*(-?\\d+|nil|'.+')\\s*\\)?\\s*$");
     std::smatch match;
 
     if (std::regex_search(s, match, function_re)) {
@@ -141,6 +142,7 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
     std::vector<struct FileToken> tokens;
     std::string cur;
     FileTokenType cur_type = FileTokenType::none;
+    FileTokenType prev_type = FileTokenType::none;
     int line_number = 1;
     int column_number = 1;
     char prev_c = 0;
@@ -163,6 +165,7 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                             std::string value = cur;
                             struct FileToken token = {value, cur_type};
                             tokens.push_back(token);
+                            prev_type = cur_type;
                             cur_type = FileTokenType::function_declaration_parameter;
                             cur.clear();
                             break;
@@ -184,6 +187,7 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                             struct FileToken token = {value, cur_type};
                             tokens.push_back(token);
                             cur.clear();
+                            prev_type = cur_type;
                             cur_type = FileTokenType::function_declaration_expression;
                             break;
                         }
@@ -192,6 +196,8 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                         break;
                     case FileTokenType::expression:
                         cur += ' ';
+                        break;
+                    case FileTokenType::comment:
                         break;
                     case FileTokenType::none:
                         // pass, we are not in any block
@@ -207,6 +213,7 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                 case FileTokenType::function_declaration_name:
                     break;
                 case FileTokenType::function_declaration_arrow:
+                    prev_type = cur_type;
                     cur_type = FileTokenType::function_declaration_expression;
                     cur += c;
                     paren_count = 1;
@@ -221,8 +228,11 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                     paren_count++;
                     cur += c;
                     break;
+                case FileTokenType::comment:
+                    break;
                 case FileTokenType::none:
                     cur += c;
+                    prev_type = cur_type;
                     cur_type = FileTokenType::expression;
                     paren_count = 1;
                     break;
@@ -246,6 +256,7 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                         struct FileToken token = {value, cur_type};
                         tokens.push_back(token);
                         cur.clear();
+                        prev_type = cur_type;
                         cur_type = FileTokenType::none;
                     }
                     break;
@@ -257,10 +268,14 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                         struct FileToken token= {value, cur_type};
                         tokens.push_back(token);
                         cur.clear();
+                        prev_type = cur_type;
                         cur_type = FileTokenType::none;
                     }
                     break;
+                case FileTokenType::comment:
+                    break;
                 case FileTokenType::none:
+                    prev_type = cur_type;
                     cur_type = FileTokenType::function_declaration_name;
                     cur += c;
                     break;
@@ -286,7 +301,10 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                 case FileTokenType::expression:
                     cur += c;
                     break;
+                case FileTokenType::comment:
+                    break;
                 case FileTokenType::none:
+                    prev_type = cur_type;
                     cur_type = FileTokenType::function_declaration_name;
                     cur += c;
                     break;
@@ -306,6 +324,7 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                         error(TOKENIZER_BAD_TOKEN_ERROR_MESSAGE(line_number, column_number, c));
                     } else {
                         cur += c;
+                        prev_type = cur_type;
                         cur_type = FileTokenType::function_declaration_arrow;
                     }
                     break;
@@ -314,6 +333,8 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                     break;
                 case FileTokenType::expression:
                     cur += c;
+                    break;
+                case FileTokenType::comment:
                     break;
                 case FileTokenType::none:
                     error(TOKENIZER_BAD_TOKEN_ERROR_MESSAGE(line_number, column_number, c));
@@ -340,7 +361,45 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                 case FileTokenType::expression:
                     cur += c;
                     break;
+                case FileTokenType::comment:
+                    break;
                 case FileTokenType::none:
+                    break;
+            }
+
+        } else if (c == '-') {
+            switch (cur_type) {
+                case FileTokenType::function_declaration_name:
+                    error(TOKENIZER_BAD_TOKEN_ERROR_MESSAGE(line_number, column_number, c));
+                    break;
+                case FileTokenType::function_declaration_arrow:
+                    error(TOKENIZER_BAD_TOKEN_ERROR_MESSAGE(line_number, column_number, c));
+                    break;
+                case FileTokenType::function_declaration_parameter:
+                    if (prev_c == '-') {
+                        prev_type = cur_type;
+                        cur_type = FileTokenType::comment;
+                    }
+                    break;
+                case FileTokenType::function_declaration_expression:
+                    if (prev_c == '-') {
+                        prev_type = cur_type;
+                        cur_type = FileTokenType::comment;
+                    }
+                    break;
+                case FileTokenType::expression:
+                    if (prev_c == '-') {
+                        prev_type = cur_type;
+                        cur_type = FileTokenType::comment;
+                    }
+                    break;
+                case FileTokenType::comment:
+                    break;
+                case FileTokenType::none:
+                    if (prev_c == '-') {
+                        prev_type = cur_type;
+                        cur_type = FileTokenType::comment;
+                    }
                     break;
             }
 
@@ -361,6 +420,8 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
                 case FileTokenType::expression:
                     cur += c;
                     break;
+                case FileTokenType::comment:
+                    break;
                 case FileTokenType::none:
                     error(TOKENIZER_BAD_TOKEN_ERROR_MESSAGE(line_number, column_number, c));
                     break;
@@ -370,6 +431,9 @@ std::vector<struct FileToken> tokenize_file(std::ifstream& f)
         if (c == '\n') {
             line_number++;
             column_number = 1;
+            if (cur_type == FileTokenType::comment) {
+                cur_type = prev_type;
+            }
         } else {
             column_number++;
         }

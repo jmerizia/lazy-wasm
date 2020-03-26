@@ -16,6 +16,7 @@ enum class FileTokenType {
     function_declaration_arrow,
     function_declaration_expression,
     expression,
+    comment,
     none,
 };
 

@@ -1,7 +1,9 @@
 print_str str => 
     (if str
-        {   (print_char (first str)) ,
-            (print (second str) }
+        (both
+            (print_char (first str))
+            (print (second str)
+        )
         (nil)
     )
 
