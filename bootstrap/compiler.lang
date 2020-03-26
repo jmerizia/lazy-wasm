@@ -1,0 +1,47 @@
+% Simple Language Compiler V1
+%   A simple functional programming language compiler
+%   written in itself.
+%
+% - Specification -
+% Functions:
+%   Reserved functions: define, do, let, if, equals, or, and, not, concat
+%
+% Variables:
+%   All variables are immutable and lazily evaluated.
+%
+% Primitives:
+%   TRUE, FALSE, NULL, and /[0-9]+/
+
+(define
+    next_token
+    (do
+        (let c (read 1))
+        (let is_stop_character
+            (or (equals c " ") (equals c "\n"))
+        )
+        (let is_null
+            (equals c NULL)
+        )
+        (if
+            (or (is_stop_character is_null))
+            ("")
+            (concat c next_token)
+        )
+    )
+)
+
+(define
+    tokenize
+    (do
+        (if )
+    )
+)
+
+(define
+    parse
+    (do
+        (let )
+    )
+)
+
+(do (compile (parse (tokenize))))

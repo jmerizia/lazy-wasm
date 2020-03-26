@@ -1,0 +1,21 @@
+program
+    : statement+
+    ;
+
+statement
+    : '(' primitive ')'
+    : '(' id ')'
+    : '(' id (id | statement)* ')'
+    ;
+
+primitive
+    : [0-9]+
+    : ''' ~[']* '''
+    : TRUE
+    : FALSE
+    : NULL
+    ;
+
+id
+    : [a-z]+
+    ;
