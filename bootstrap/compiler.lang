@@ -1,47 +1,65 @@
-% Simple Language Compiler V1
-%   A simple functional programming language compiler
-%   written in itself.
-%
-% - Specification -
-% Functions:
-%   Reserved functions: define, do, let, if, equals, or, and, not, concat
-%
-% Variables:
-%   All variables are immutable and lazily evaluated.
-%
-% Primitives:
-%   TRUE, FALSE, NULL, and /[0-9]+/
+# Simple Language Compiler V1
+#   A simple functional programming language compiler
+#   written in itself.
+#
+# - Specification -
+# Primitives:
+#   TRUE, FALSE, NULL, and /[0-9]+/
 
-(define
-    next_token
-    (do
-        (let c (read 1))
-        (let is_stop_character
-            (or (equals c " ") (equals c "\n"))
-        )
-        (let is_null
-            (equals c NULL)
-        )
-        (if
-            (or (is_stop_character is_null))
-            ("")
-            (concat c next_token)
+# Takes a sequence and an element,
+# returns if the element can be found in the sequence.
+(def contains Sq El
+    (match Sq
+        NULL FALSE
+        El   TRUE
+        ANY  (contains (get Sq 2))
+    )
+)
+
+(def filter S F
+    (match S
+        NULL NULL
+        ANY (match (F S)
+            TRUE [ S, (filter (get S 2)) ]
+            ANY (filter (get S 2))
         )
     )
 )
 
-(define
-    tokenize
-    (do
-        (if )
+# Takes a sequence, returns the prefix that is a token.
+(def get_next_token S (do
+    (let c (get S 1))
+    (match c 
+        NULL NULL
+        ANY (match (contains " \r\n\t" c)
+            TRUE  NULL
+            FALSE [ c, (get_next_token (get Sq 2)) ]
+        )
     )
+))
+
+
+# Split a character sequence into a sequence of tokens.
+(def tokenize S
+    [ (get_next_token S), (tokenize (seek_next_token S)) ]
 )
 
-(define
-    parse
-    (do
-        (let )
+(def read_input (do
+    (let c (read_char 1))
+    (match c
+        NULL [ c (read_input) ]
+        ANY [ c NULL ]
     )
+))
+
+(def tokenize input 
+    (split input " \r\n\t")
 )
 
-(do (compile (parse (tokenize))))
+(print
+    (parse
+        (tokenize
+            (read_input) # test
+        )
+    )
+)

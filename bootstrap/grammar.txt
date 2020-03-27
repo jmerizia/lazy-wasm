@@ -3,19 +3,18 @@ program
     ;
 
 statement
-    : '(' primitive ')'
-    : '(' id ')'
-    : '(' id (id | statement)* ')'
+    : '(' id (id | statement | primitive)* ')'
     ;
 
 primitive
-    : [0-9]+
-    : ''' ~[']* '''
-    : TRUE
-    : FALSE
-    : NULL
+    : '-'? [1-9] [0-9]*
+    : '"..."'
+    : 'TRUE'
+    : 'FALSE'
+    : 'NULL'
+    : 'ANY'
     ;
 
 id
-    : [a-z]+
+    : [a-zA-Z_]+
     ;
