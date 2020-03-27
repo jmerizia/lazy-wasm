@@ -3,7 +3,11 @@ program
     ;
 
 statement
-    : '(' id (id | statement | primitive)* ')'
+    : '(' id (id | statement | list | primitive)* ')'
+    ;
+
+list
+    : '[' (id | statement | list | primitive)+ ']'
     ;
 
 primitive

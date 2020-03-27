@@ -20,46 +20,46 @@
     (match S
         NULL NULL
         ANY (match (F S)
-            TRUE [ S, (filter (get S 2)) ]
+            TRUE [ S (filter (get S 2)) ]
             ANY (filter (get S 2))
         )
     )
 )
 
-# Takes a sequence, returns the prefix that is a token.
-(def get_next_token S (do
-    (let c (get S 1))
-    (match c 
-        NULL NULL
-        ANY (match (contains " \r\n\t" c)
-            TRUE  NULL
-            FALSE [ c, (get_next_token (get Sq 2)) ]
-        )
-    )
-))
-
-
-# Split a character sequence into a sequence of tokens.
-(def tokenize S
-    [ (get_next_token S), (tokenize (seek_next_token S)) ]
-)
-
-(def read_input (do
-    (let c (read_char 1))
-    (match c
-        NULL [ c (read_input) ]
-        ANY [ c NULL ]
-    )
-))
-
-(def tokenize input 
-    (split input " \r\n\t")
-)
-
-(print
-    (parse
-        (tokenize
-            (read_input) # test
-        )
-    )
-)
+## Takes a sequence, returns the prefix that is a token.
+#(def get_next_token S (do
+#    (let c (get S 1))
+#    (match c 
+#        NULL NULL
+#        ANY (match (contains " \r\n\t" c)
+#            TRUE  NULL
+#            FALSE [ c, (get_next_token (get Sq 2)) ]
+#        )
+#    )
+#))
+#
+#
+## Split a character sequence into a sequence of tokens.
+#(def tokenize S
+#    [ (get_next_token S), (tokenize (seek_next_token S)) ]
+#)
+#
+#(def read_input (do
+#    (let c (read_char 1))
+#    (match c
+#        NULL [ c (read_input) ]
+#        ANY [ c NULL ]
+#    )
+#))
+#
+#(def tokenize input 
+#    (split input " \r\n\t")
+#)
+#
+#(print
+#    (parse
+#        (tokenize
+#            (read_input) # test
+#        )
+#    )
+#)

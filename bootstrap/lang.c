@@ -8,8 +8,10 @@
 #define MAX_TOKEN_LEN 1000
 #define SINGLE_CHAR_TOKENS "()[],"
 
-char input[MAX_INPUT_LEN];
-char token[MAX_TOKEN_LEN];
+
+/*
+ * QUEUE
+ */
 
 struct Node;
 struct Queue;
@@ -64,18 +66,38 @@ void destroy_queue(Queue * q)
 Node * queue_begin(Queue * q) { return q->head->next; }
 Node * queue_end(Queue * q) { return q->tail; }
 
+
+/*
+ * EXPRESSIONS
+ */
+
+enum ExpressionType;
+struct Expression;
+
 enum ExpressionType {
     Program = 0,
     Statement = 1,
-    Id = 2,
-    Primitive = 3,
+    List = 2,
+    Id = 3,
+    Primitive = 4,
 } typedef ExpressionType;
+char * ExpressionTypeString[5] = {
+    "Program",
+    "Statement",
+    "List",
+    "Id",
+    "Primitive",
+};
 
 struct Expression {
     char * value;
     Queue * children;
     ExpressionType type;
 } typedef Expression;
+
+Expression * new_expression(void);
+void destroy_expression(Expression * e);
+void print_expression(Expression * e, int d);
 
 Expression * new_expression()
 {
@@ -95,6 +117,27 @@ void destroy_expression(Expression * e)
     free(e);
 }
 
+void print_expression(Expression * e, int d)
+{
+    for (int i = 0; i < d; i++) printf("  ");
+    printf("%s : %s\n", ExpressionTypeString[e->type],
+            e->value == NULL ? "0" : e->value);
+    Node * cur = queue_begin(e->children),
+         * end = queue_end(e->children);
+    for (; cur != end; cur = cur->next) {
+        print_expression(cur->data, d+1);
+    }
+}
+
+
+/*
+ * LEXING
+ */
+
+char input[MAX_INPUT_LEN];
+char token[MAX_TOKEN_LEN];
+int idx;
+
 bool member_of(char c, char * set)
 {
     for (int i = 0; set[i] != '\0'; i++)
@@ -103,7 +146,7 @@ bool member_of(char c, char * set)
     return false;
 }
 
-int lex(int idx)
+bool lex()
 {
     int i = idx, j = 0;
 
@@ -120,7 +163,7 @@ int lex(int idx)
     }
 
     // if no token left
-    if (input[i] == '\0') return -1;
+    if (input[i] == '\0') return false;
 
     // if single character token
     if (member_of(input[i], SINGLE_CHAR_TOKENS)) {
@@ -147,21 +190,37 @@ int lex(int idx)
     }
     token[j] = '\0';
 
-    printf("Token: %s\n", token);
+    printf("%s\n", token);
 
     // check length not zero
     if (strlen(token) < 1) {
         printf("Token should not be empty string!\n");
         exit(EXIT_FAILURE);
     }
-    return i;
+    // update global program index
+    idx = i;
+    return true;
 }
 
-bool parse_primitive(int idx, Expression * root)
+
+/*
+ * PARSING
+ */
+
+Expression * parse_program(void);
+bool parse_statement (Expression * root);
+bool parse_list      (Expression * root);
+bool parse_id        (Expression * root);
+bool parse_primitive (Expression * root);
+
+bool parse_primitive(Expression * root)
 {
-    printf("parse primitive\n");
     Expression * e = new_expression();
-    idx = lex(idx);
+    int prv_idx = idx;
+    if (!lex()) {
+        printf("Error: Expected token\n");
+        exit(EXIT_FAILURE);
+    }
     int len = strlen(token);
     bool is_num = strcmp(token, "0") == 0 ? true : atoi(token) != 0;
     bool is_str = token[0] == '\"' && token[len-1] == '\"';
@@ -170,6 +229,7 @@ bool parse_primitive(int idx, Expression * root)
             && strcmp(token, "FALSE") != 0
             && strcmp(token, "NULL") != 0
             && !is_num && !is_str) {
+        idx = prv_idx;
         destroy_expression(e);
         return false;
     }
@@ -177,14 +237,18 @@ bool parse_primitive(int idx, Expression * root)
     strcpy(e->value, token);
     e->type = Primitive;
     queue_push(root->children, e);
+    printf("primitive finish\n");
     return true;
 }
 
-bool parse_id(int idx, Expression * root)
+bool parse_id(Expression * root)
 {
-    printf("parse id\n");
     Expression * e = new_expression();
-    idx = lex(idx);
+    int prv_idx = idx;
+    if (!lex()) {
+        printf("Error: Expected token\n");
+        exit(EXIT_FAILURE);
+    }
     bool is_id = true;
     for (int i = 0; token[i] != '\0'; i++) {
         if (!(isalpha(token[i]) || token[i] == '_')) {
@@ -193,6 +257,7 @@ bool parse_id(int idx, Expression * root)
         }
     }
     if (!is_id) {
+        idx = prv_idx; // go back to previous token
         destroy_expression(e);
         return false;
     }
@@ -200,41 +265,69 @@ bool parse_id(int idx, Expression * root)
     strcpy(e->value, token);
     e->type = Id;
     queue_push(root->children, e);
+    printf("id finish\n");
     return true;
 }
 
-bool parse_statement(int idx, Expression * root)
+bool parse_list(Expression * root)
 {
-    printf("parse statement\n");
     Expression * e = new_expression();
-    idx = lex(idx);
-    if (idx < 0 || strcmp(token, "(") != 0 || !parse_id(idx, e)) {
+    int prv_idx = idx;
+    if (!lex()) {
+        printf("Error: Expected token\n");
+        exit(EXIT_FAILURE);
+    }
+    if (strcmp(token, "[") != 0) {
         destroy_expression(e);
+        idx = prv_idx;
         return false;
     }
-    while (parse_id(idx, e)
-            || parse_statement(idx, e)
-            || parse_primitive(idx, e));
+    while (parse_id(e) || parse_statement(e) || parse_list(e) || parse_primitive(e));
+    lex();
+    if (strcmp(token, "]") != 0) {
+        // error
+        printf("Error: Expected closing paren!\n");
+        exit(EXIT_FAILURE);
+    }
+    e->value = NULL;
+    e->type = List;
+    queue_push(root->children, e);
+    printf("list finish\n");
+    return true;
+}
+
+bool parse_statement(Expression * root)
+{
+    int prv_idx = idx;
+    if (!lex()) return false;
+    Expression * e = new_expression();
+    if (strcmp(token, "(") != 0 || !parse_id(e)) {
+        destroy_expression(e);
+        idx = prv_idx; // go back to previous token
+        return false;
+    }
+    while (parse_id(e) || parse_statement(e) || parse_list(e) || parse_primitive(e));
+    lex();
+    if (strcmp(token, ")") != 0) {
+        // error
+        printf("Error: Expected closing paren!\n");
+        exit(EXIT_FAILURE);
+    }
     e->value = NULL;
     e->type = Statement;
     queue_push(root->children, e);
+    printf("statmt finish\n");
     return true;
 }
 
-bool parse_program(int idx, Expression * root)
+Expression * parse_program()
 {
-    printf("parse program\n");
     Expression * e = new_expression();
-    int did = 0;
-    while (parse_statement(idx, e)) did++;
-    if (!did) {
-        destroy_expression(e);
-        return false;
-    }
+    while (parse_statement(e));
     e->value = NULL;
     e->type = Program;
-    queue_push(root->children, e);
-    return true;
+    printf("prog finish\n");
+    return e;
 }
 
 int main(int argc, char * argv[])
@@ -261,10 +354,8 @@ int main(int argc, char * argv[])
     if (line) free(line);
 
     // parse program into rooted tree:
-    Expression * root = new_expression();
-    root->value = "";
-    int idx = 0;
-    parse_program(idx, root);
+    Expression * e = parse_program();
+    print_expression(e, 0);
 
     return 0;
 }
