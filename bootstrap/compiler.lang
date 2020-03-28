@@ -5,6 +5,9 @@
 # - Specification -
 # Primitives:
 #   TRUE, FALSE, NULL, and /[0-9]+/
+#
+#   Built-ins:
+#       def, match, get, let, do, +, -, *, /, =
 
 # Takes a sequence and an element,
 # returns if the element can be found in the sequence.
