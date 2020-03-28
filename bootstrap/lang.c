@@ -1,3 +1,10 @@
+/*
+ *   A simple functional programming language.
+ *
+ *   by Jacob Merizian
+ *   License: MIT
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
