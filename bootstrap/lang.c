@@ -9,9 +9,9 @@
 #define SINGLE_CHAR_TOKENS "()[],"
 
 
-/*
- * QUEUE
- */
+/*******************
+ *      QUEUE      *
+ *******************/
 
 struct Node;
 struct Queue;
@@ -67,9 +67,9 @@ Node * queue_begin(Queue * q) { return q->head->next; }
 Node * queue_end(Queue * q) { return q->tail; }
 
 
-/*
- * EXPRESSIONS
- */
+/*******************
+ *   EXPRESSIONS   *
+ *******************/
 
 enum ExpressionType;
 struct Expression;
@@ -130,9 +130,9 @@ void print_expression(Expression * e, int d)
 }
 
 
-/*
- * LEXING
- */
+/*******************
+ *     LEXING      *
+ *******************/
 
 char input[MAX_INPUT_LEN];
 char token[MAX_TOKEN_LEN];
@@ -190,8 +190,6 @@ bool lex()
     }
     token[j] = '\0';
 
-    printf("%s\n", token);
-
     // check length not zero
     if (strlen(token) < 1) {
         printf("Token should not be empty string!\n");
@@ -203,9 +201,9 @@ bool lex()
 }
 
 
-/*
- * PARSING
- */
+/*******************
+ *     PARSING     *
+ *******************/
 
 Expression * parse_program(void);
 bool parse_statement (Expression * root);
@@ -237,7 +235,6 @@ bool parse_primitive(Expression * root)
     strcpy(e->value, token);
     e->type = Primitive;
     queue_push(root->children, e);
-    printf("primitive finish\n");
     return true;
 }
 
@@ -265,7 +262,6 @@ bool parse_id(Expression * root)
     strcpy(e->value, token);
     e->type = Id;
     queue_push(root->children, e);
-    printf("id finish\n");
     return true;
 }
 
@@ -292,7 +288,6 @@ bool parse_list(Expression * root)
     e->value = NULL;
     e->type = List;
     queue_push(root->children, e);
-    printf("list finish\n");
     return true;
 }
 
@@ -316,7 +311,6 @@ bool parse_statement(Expression * root)
     e->value = NULL;
     e->type = Statement;
     queue_push(root->children, e);
-    printf("statmt finish\n");
     return true;
 }
 
@@ -326,9 +320,61 @@ Expression * parse_program()
     while (parse_statement(e));
     e->value = NULL;
     e->type = Program;
-    printf("prog finish\n");
     return e;
 }
+
+
+/*******************
+ *    EXECUTION    *
+ *******************/
+
+enum ResultType {
+    value
+};
+
+struct Result {
+    int * value;
+    ResultType type;
+} typedef Result;
+
+struct Thunk {
+    Expression * e;
+    int * result;
+} typedef Thunk;
+
+void execute(Expression * e)
+{
+    if (e->type == Program) {
+        Node * cur = queue_begin(e->children),
+             * end = queue_end(e->children);
+        for (; cur != end; cur = cur->next) {
+            execute(cur);
+        }
+    }
+
+    /*Program = 0,
+    Statement = 1,
+    List = 2,
+    Id = 3,
+    Primitive = 4,*/
+
+    if (e->type == Statement) {
+
+    }
+
+    if (e->type == List) {
+
+    }
+
+    if (e->type == Id) {
+
+    }
+
+    if (e->type == Primitive) {
+
+    }
+}
+
 
 int main(int argc, char * argv[])
 {
