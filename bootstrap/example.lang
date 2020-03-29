@@ -11,22 +11,40 @@
 
 # Takes a sequence and an element,
 # returns if the element can be found in the sequence.
-(def contains Sq El
-    (match Sq
-        NULL FALSE
-        El   TRUE
-        ANY  (contains (get Sq 2))
+## (def contains Sq El
+##     (match Sq
+##         NULL FALSE
+##         El   TRUE
+##         ANY  (contains (get Sq 2))
+##     )
+## )
+## 
+## (def filter S F
+##     (match S
+##         NULL NULL
+##         ANY (match (F S)
+##             TRUE [ S (filter (get S 2)) ]
+##             ANY (filter (get S 2))
+##         )
+##     )
+## )
+
+(def square a (do  # 
+    (def _pow a n
+        (* a (_pow a (- n 1)))
+    )
+    (_pow a 2)
+))
+
+(print  # a:(square 5)
+    (square
+        5
     )
 )
 
-(def filter S F
-    (match S
-        NULL NULL
-        ANY (match (F S)
-            TRUE [ S (filter (get S 2)) ]
-            ANY (filter (get S 2))
-        )
-    )
+(do
+    (let a 5)  // "a"=5
+    (print (square (+ a 1))  "a"
 )
 
 ## Takes a sequence, returns the prefix that is a token.
