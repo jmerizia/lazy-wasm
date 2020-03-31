@@ -14,7 +14,8 @@
 
 #define MAX_INPUT_LEN 100000
 #define MAX_TOKEN_LEN 1000
-#define SINGLE_CHAR_TOKENS "()[],+-*/="
+#define SINGLE_CHAR_TOKENS "()[],+-*/=?:"
+#define SYSTEM_FUNCTION_TOKENS "+-*/=?%:"
 #define streq(a, b) (strcmp((a), (b)) == 0)
 #define DEBUG
 
@@ -286,6 +287,7 @@ bool lex()
         token[j++] = input[i++];
 
     } else if (input[i] == '\"') { // string token
+        // TODO: escape sequences!
         token[j++] = input[i++];
         while (input[i] != '\0' && input[i] != '\"') {
             token[j++] = input[i++];
@@ -373,7 +375,7 @@ bool parse_id(Expression * root)
     Expression * e = new_expression(token, Id, PrimitiveANY);
     bool is_id = true;
     for (int i = 0; token[i] != '\0'; i++) {
-        if (!(isalpha(token[i]) || member_of(token[i], "_+-*/"))) {
+        if (!(isalpha(token[i]) || member_of(token[i], SYSTEM_FUNCTION_TOKENS))) {
             is_id = false;
             break;
         }
@@ -419,7 +421,7 @@ bool parse_statement(Expression * root)
         idx = prv_idx; // go back to previous token
         return false;
     }
-    while (parse_id(e) || parse_statement(e) || parse_list(e) || parse_primitive(e));
+    while (parse_primitive(e) || parse_id(e) || parse_statement(e) || parse_list(e));
     lex();
     expect(strcmp(token, ")") == 0, "Error: Expected closing paren!\n");
     queue_push(root->children, e);
@@ -439,8 +441,7 @@ Expression * parse_program()
  *******************/
 
 /* lifecycle:
- *   - Creation: on primitive execution
- *   - Destruction: upon terminal usage (not passing)
+ *   TODO: Figure out when to create/destroy these. GC??
  *   *** Result can only be used once ***
  *   TODO: Add function as a PrimitiveType so we can have first-class functions
  */
@@ -453,6 +454,7 @@ struct Result {
 /* lifecycle:
  *   - Creation: When statement "def" is executed
  *   - Destruction: Program termination
+ *   TODO: Make functions scoped locally to a thunk
  */
 struct Function {
     char * name;
@@ -489,6 +491,40 @@ void destroy_result(Result * res)
 {
     free(res->str);
     free(res);
+}
+
+void print_result(Result * res)
+{
+    if      (res->type == PrimitiveANY)    printf("ANY\n");
+    else if (res->type == PrimitiveTRUE)   printf("TRUE\n");
+    else if (res->type == PrimitiveFALSE)  printf("FALSE\n");
+    else if (res->type == PrimitiveNULL)   printf("NULL\n");
+    else if (res->type == PrimitiveString) printf("%s\n", res->str);
+    else if (res->type == PrimitiveNumber) printf("%lld\n", res->num);
+}
+
+bool result_equal(Result * a, Result * b)
+{
+    if (a->type == PrimitiveANY ||
+        b->type == PrimitiveANY)    return true;
+    if (a->type != b->type)         return false;
+    if (a->type == PrimitiveTRUE)   return true;
+    if (a->type == PrimitiveFALSE)  return true;
+    if (a->type == PrimitiveNULL)   return true;
+    if (a->type == PrimitiveString) return streq(a->str, b->str);
+    if (a->type == PrimitiveNumber) return a->num == b->num;
+    return false;
+}
+
+bool result_is_true(Result * res)
+{
+    if (res->type == PrimitiveANY)    return true;
+    if (res->type == PrimitiveTRUE)   return true;
+    if (res->type == PrimitiveFALSE)  return false;
+    if (res->type == PrimitiveNULL)   return false;
+    if (res->type == PrimitiveString) return true;
+    if (res->type == PrimitiveNumber) return res->num != 0;
+    return false;
 }
 
 Function * new_function(char * name, Expression * e)
@@ -534,7 +570,11 @@ Thunk * new_thunk(char * name /*required*/, Expression * e, Queue/*<Thunk>*/ * c
     t->e = e;
     t->res = NULL;
     t->name = clone_string(name);
-    t->context = new_queue(context /* may be NULL */);
+    // This is tricky: Sometimes, we want a shared context between thunks,
+    // sometimes we want a completely new  and empty context,
+    // and sometimes we want a clone of the parent context (to avoid contamination).
+    // So, just keep a pointer, and let calling function determine the context.
+    t->context = context;
     return t;
 }
 
@@ -555,29 +595,25 @@ Function * find_function(char * name)
     return NULL;
 }
 
-void print_result(Result * res)
-{
-    if      (res->type == PrimitiveANY)    printf("ANY\n");
-    else if (res->type == PrimitiveTRUE)   printf("TRUE\n");
-    else if (res->type == PrimitiveFALSE)  printf("FALSE\n");
-    else if (res->type == PrimitiveNULL)   printf("NULL\n");
-    else if (res->type == PrimitiveString) printf("%s\n", res->str);
-    else if (res->type == PrimitiveNumber) printf("%lld\n", res->num);
-}
-
 void execute(Thunk * t)
 {
     if (t->res != NULL) {
         // do nothing, this has already been calculated
 
     } else if (t->e->type == Program) {
+        Expression * ec;
+        Thunk * tc;
+        // Make a clone of context share variables in local scope,
+        // without contaminating parent scope.
+        Queue/*<Thunk>*/ * context = new_queue(t->context);
         queue_foreach(node, t->e->children) {
-            Expression * ec = node->data;
-            Thunk * tc = new_thunk("*", ec, t->context);
+            ec = node->data;
+            tc = new_thunk("*", ec, context);
             execute(tc);
             t->res = tc->res;
             destroy_thunk(tc);
         }
+        destroy_queue(context);
 
     } else if (t->e->type == Statement) {
         expect(queue_size(t->e->children) >= 1,
@@ -606,14 +642,36 @@ void execute(Thunk * t)
             Function * f = new_function(fname, t->e);
             queue_push(ftable, f);
 
-        } else if (streq(name, "match")) {
-            expect(false, "Error: 'match' not implemented yet!");
-
         } else if (streq(name, "do")) {
-            expect(false, "Error: 'do' not implemented yet!");
+            do {
+                int i = 0;
+                Expression * ec;
+                Thunk * tc;
+                Queue/*<Thunk>*/ * context = new_queue(t->context);
+                queue_foreach(node, t->e->children) {
+                    if (i != 0) {
+                        ec = node->data;
+                        tc = new_thunk("*", ec, context);
+                        execute(tc);
+                        t->res = tc->res;
+                        destroy_thunk(tc);
+                    }
+                    i++;
+                }
+                destroy_queue(context);
+            } while (0);
 
         } else if (streq(name, "let")) {
-            expect(false, "Error: 'let' not implemented yet!");
+            expect(queue_size(t->e->children) == 3,
+                    "Error: Expected 'let' statement to be given 2 parameters.\n");
+            Expression * id = queue_begin(t->e->children)->next->data;
+            Expression * ec = queue_begin(t->e->children)->next->next->data;
+            expect(id->type == Id, "Error: Expected parameter 1 of 'let' statement to be Id.\n");
+            // This thunk shouldn't see itself (so t->context is cloned first):
+            Queue/*<Thunk>*/ * context = new_queue(t->context);
+            Thunk * tc = new_thunk(id->value, ec, context);
+            queue_push(t->context, tc);
+            t->res = new_result(0, NULL, PrimitiveNULL);
 
         } else if (streq(name, "get")) {
             expect(false, "Error: 'get' not implemented yet!");
@@ -629,25 +687,135 @@ void execute(Thunk * t)
             destroy_thunk(tt);
             t->res = new_result(0, NULL, PrimitiveNULL);
 
-        } else if (strlen(name) == 1 && member_of(name[0], "+-*/")) {
+        } else if (streq(name, "match")) {
+            // TODO: Add match to grammar, and move this sanitization to the parser...
+            expect(queue_size(t->e->children) >= 2,
+                    "Error: Too few parameters to 'match' statement.\n");
+
+            Result * res_given;
+            do {
+                Expression * ec_given = queue_begin(t->e->children)->next->data;
+                Queue/*<Thunk>*/ * context = new_queue(t->context);
+                Thunk * tc_given = new_thunk("*", ec_given, context);
+                execute(tc_given);
+                res_given = tc_given->res;
+                destroy_thunk(tc_given);
+                destroy_queue(context);
+            } while (0);
+
+            Node * cur = queue_begin(t->e->children)->next->next,
+                 * end = queue_end(t->e->children);
+            bool matched = false;
+            for (int i = 0; cur != end; i++) {
+                // process the first value
+                Expression * ec_test = cur->data;
+
+                // process the ':' token
+                expect(cur->next != end, "Error: Expected ':' token in match statement.\n");
+                cur = cur->next;
+                Expression * ec_sep = cur->data;
+
+                // process the third value
+                expect(ec_sep->type == Id, "Error: Expected ':' token in match statement.\n");
+                expect(streq(ec_sep->value, ":"), "Error: Expected ':' token in match statement.\n");
+                expect(cur->next != end,
+                        "Error: Expected another parameter in match statement.\n");
+                cur = cur->next;
+                Expression * ec_ans = cur->data;
+
+                // advice to either end, or start of next triplet:
+                cur = cur->next;
+
+                // Compute this test:
+                Result * res_test;
+                do {
+                    Queue/*<Thunk>*/ * context = new_queue(t->context);
+                    Thunk * tc_test = new_thunk("*", ec_test, context);
+                    execute(tc_test);
+                    res_test = tc_test->res;
+                    destroy_thunk(tc_test);
+                    destroy_queue(context);
+                } while (0);
+                if (result_equal(res_given, res_test)) {
+                    Queue/*<Thunk>*/ * context = new_queue(t->context);
+                    Thunk * tc_ans = new_thunk("*", ec_ans, context);
+                    execute(tc_ans);
+                    t->res = tc_ans->res;
+                    destroy_thunk(tc_ans);
+                    destroy_queue(context);
+                    matched = true;
+                    break;
+                }
+            }
+            if (!matched) {
+                t->res = new_result(0, NULL, PrimitiveNULL);
+            }
+
+        } else if (streq(name, "?")) {
+            expect(queue_size(t->e->children) == 4,
+                    "Expected 4 arguments for '?' statement.\n");
+            Expression * e_test = queue_begin(t->e->children)->next->data;
+            Queue/*<Thunk>*/ * context = new_queue(t->context);
+            Thunk * t_test = new_thunk("*", e_test, context);
+            execute(t_test);
+            Expression * ec;
+            if (result_is_true(t_test->res)) {
+                ec = queue_begin(t->e->children)->next->next->data;
+            } else {
+                ec = queue_begin(t->e->children)->next->next->next->data;
+            }
+            Thunk * ans = new_thunk("*", ec, t->context);
+            execute(ans);
+            t->res = ans->res;
+            destroy_thunk(ans);
+            destroy_thunk(t_test);
+            destroy_queue(context);
+
+        } else if (strlen(name) == 1 && member_of(name[0], "+-*/%")) {
             expect(queue_size(t->e->children) == 3,
                     "Invalid number of arguments for '%s' function.\n", name);
             Expression * ea = queue_begin(t->e->children)->next->data;
             Expression * eb = queue_begin(t->e->children)->next->next->data;
-            Thunk * tta = new_thunk("*", ea, t->context);
-            Thunk * ttb = new_thunk("*", eb, t->context);
+            Queue/*<Thunk>*/ * context_a = new_queue(t->context);
+            Queue/*<Thunk>*/ * context_b = new_queue(t->context);
+            Thunk * tta = new_thunk("*", ea, context_a);
+            Thunk * ttb = new_thunk("*", eb, context_b);
             execute(tta);
             execute(ttb);
             long long num;
-            if (name[0] == '+') num = tta->res->num + ttb->res->num;
-            if (name[0] == '-') num = tta->res->num - ttb->res->num;
-            if (name[0] == '*') num = tta->res->num * ttb->res->num;
-            if (name[0] == '/') num = tta->res->num / ttb->res->num;
+            if      (name[0] == '+') num = tta->res->num + ttb->res->num;
+            else if (name[0] == '-') num = tta->res->num - ttb->res->num;
+            else if (name[0] == '*') num = tta->res->num * ttb->res->num;
+            else if (name[0] == '/') num = tta->res->num / ttb->res->num;
+            else if (name[0] == '%') num = tta->res->num % ttb->res->num;
             t->res = new_result(num, NULL, PrimitiveNumber);
             // Note: The result may have been reused from somewhere else,
             //       and it still may be used elsewhere, so we cannot destroy it yet.
             destroy_thunk(tta);
             destroy_thunk(ttb);
+            destroy_queue(context_a);
+            destroy_queue(context_b);
+
+        } else if (streq(name, "=")) {
+            expect(queue_size(t->e->children) == 3,
+                    "Invalid number of arguments for '%s' function.\n", name);
+            Expression * ea = queue_begin(t->e->children)->next->data;
+            Expression * eb = queue_begin(t->e->children)->next->next->data;
+            Queue/*<Thunk>*/ * context_a = new_queue(t->context);
+            Queue/*<Thunk>*/ * context_b = new_queue(t->context);
+            Thunk * tta = new_thunk("*", ea, context_a);
+            Thunk * ttb = new_thunk("*", eb, context_b);
+            execute(tta);
+            execute(ttb);
+            if (result_equal(tta->res, ttb->res)) {
+                t->res = new_result(0, NULL, PrimitiveTRUE);
+            } else {
+                t->res = new_result(0, NULL, PrimitiveFALSE);
+            }
+            destroy_thunk(tta);
+            destroy_thunk(ttb);
+            destroy_queue(context_a);
+            destroy_queue(context_b);
 
         } else {
             Function * userfunc = find_function(name);
@@ -655,13 +823,15 @@ void execute(Thunk * t)
             int num_params_expected = queue_size(userfunc->params);
             int num_params_supplied = queue_size(t->e->children) - 1; // ignore the function name
             expect(num_params_expected == num_params_supplied,
-                    "Error: Expected %d parameters for function %s, but got %d!",
+                    "Error: Expected %d parameters for function %s, but got %d.\n",
                     num_params_expected, name, num_params_supplied);
-            // Create a new thunk:
-            Thunk * tf = new_thunk("*", userfunc->def, NULL);
+            // Create a new thunk, with an empty context.
+            Queue/*<Thunk>*/ * context = new_queue(NULL);
+            Thunk * tf = new_thunk("*", userfunc->def, context);
             // For each function parameter, create a new thunk with the context
             // of the current thunk being executed,
-            // and add it to the function thunk's context:
+            // and add it to the function thunk's context.
+            // That way, the only Ids visible in the function execution are the parameters.
             Node * cur = queue_begin(t->e->children)->next;
             queue_foreach(node, userfunc->params) {
                 char * param_id = node->data;
@@ -672,10 +842,12 @@ void execute(Thunk * t)
             }
             execute(tf);
             t->res = tf->res;
+            // cleanup:
             queue_foreach(node, tf->context) {
                 Thunk * tp = node->data;
                 destroy_thunk(tp);
             }
+            destroy_queue(context);
             destroy_thunk(tf);
         }
 
@@ -754,11 +926,13 @@ int main(int argc, char * argv[])
     ftable = new_queue(NULL);
 
     // Execute program:
-    Thunk * thunk = new_thunk("*", program, NULL);
+    Queue/*<Thunk>*/ * context = new_queue(NULL);
+    Thunk * thunk = new_thunk("*", program, context);
     execute(thunk);
 
     // clean up
     destroy_thunk(thunk);
+    destroy_queue(context);
     destroy_expression(program);
     destroy_queue(ftable);
 
