@@ -29,23 +29,8 @@
 ##     )
 ## )
 
-(def square a (do  # 
-    (def _pow a n
-        (* a (_pow a (- n 1)))
-    )
-    (_pow a 2)
-))
-
-(print  # a:(square 5)
-    (square
-        5
-    )
-)
-
-(do
-    (let a 5)  // "a"=5
-    (print (square (+ a 1))  "a"
-)
+(def f a b (* a a))
+(print (f (print 0) 10))
 
 ## Takes a sequence, returns the prefix that is a token.
 #(def get_next_token S (do

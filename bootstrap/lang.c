@@ -104,7 +104,9 @@ void destroy_node(Node * node)
 Node * queue_begin(Queue * q) { return q->head->next; }
 Node * queue_end(Queue * q) { return q->tail; }
 #define queue_foreach(e, q) \
-    for (Node * e = queue_begin(q), * end = queue_end(q); e != end; e = e->next)
+    for (Node * e = q->head->next, * end = q->tail; e != end; e = e->next)
+#define queue_foreach_reverse(e, q) \
+    for (Node * e = q->tail->prev, * end = q->head; e != end; e = e->prev)
 
 Queue * new_queue(Queue * q_old)
 {
@@ -440,6 +442,7 @@ Expression * parse_program()
  *   - Creation: on primitive execution
  *   - Destruction: upon terminal usage (not passing)
  *   *** Result can only be used once ***
+ *   TODO: Add function as a PrimitiveType so we can have first-class functions
  */
 struct Result {
     long long num;
@@ -462,19 +465,11 @@ Queue/*<Function>*/ * ftable;
  *   - Creation: Before execution call
  *   - Destruction: After execution returns
  */
-struct Context {
-    Queue/*<Thunk>*/ * thunks;
-} typedef Context;
-
-/* lifecycle:
- *   - Creation: Before execution call
- *   - Destruction: After execution returns
- */
 struct Thunk {
     char * name;  // variable name
     Expression * e;
     Result * res;
-    Context * cx;  // multiple thunks may map to the same context
+    Queue/*<Thunk>*/ * context;
 } typedef Thunk;
 
 Result * new_result(long long num, char * str, PrimitiveType type)
@@ -505,17 +500,17 @@ Function * new_function(char * name, Expression * e)
      * Minimum expected queue size = 3 ("def", name, and declaration)
      */
     Function * f = malloc(sizeof(Function));
-    f->name = malloc((strlen(name) + 1) * sizeof(char));
-    strcpy(f->name, name);
+    f->name = clone_string(name);
+    f->params = new_queue(NULL);
     int i = 0, len = queue_size(e->children);
     queue_foreach(node, e->children) {
-        if (i == 0 || i == len-1) continue;
-        Expression * ec = node->data;
-        expect(ec->type == Id, "Error (internal): new_function :: Bad Expression tree.");
-        expect(ec->value != NULL, "Error (internal): new_function :: Bad Expression tree.");
-        char * param = malloc((strlen(ec->value) + 1) * sizeof(char));
-        strcpy(param, ec->value);
-        queue_push(f->params, param);
+        if (i > 1 && i != len-1) {
+            Expression * ec = node->data;
+            expect(ec->type == Id, "Error (internal): new_function :: Bad Expression tree.");
+            expect(ec->value != NULL, "Error (internal): new_function :: Bad Expression tree.");
+            char * param = clone_string(ec->value);
+            queue_push(f->params, param);
+        }
         i++;
     }
     f->def = queue_end(e->children)->prev->data;
@@ -532,13 +527,14 @@ void destroy_function(Function * f)
     free(f);
 }
 
-Thunk * new_thunk(char * name /*required*/, Expression * e, Context * cx)
+Thunk * new_thunk(char * name /*required*/, Expression * e, Queue/*<Thunk>*/ * context)
 {
+    expect(name != NULL, "Error (internal): Thunk name should not be NULL.\n");
     Thunk * t = malloc(sizeof(Thunk));
     t->e = e;
     t->res = NULL;
     t->name = clone_string(name);
-    t->cx = cx;
+    t->context = new_queue(context /* may be NULL */);
     return t;
 }
 
@@ -546,20 +542,6 @@ void destroy_thunk(Thunk * t)
 {
     free(t->name);
     free(t);
-}
-
-Context * new_context(Context * cx_old)
-{
-    // if cx_old is given, clone it
-    Context * cx_new = malloc(sizeof(Context));
-    cx_new->thunks = new_queue(cx_old == NULL ? NULL : cx_old->thunks);
-    return cx_new;
-}
-
-void destroy_context(Context * sc)
-{
-    destroy_queue(sc->thunks);
-    free(sc);
 }
 
 Function * find_function(char * name)
@@ -571,31 +553,6 @@ Function * find_function(char * name)
         }
     }
     return NULL;
-}
-
-Thunk * find_thunk(char * name, Context * cx)
-{
-    queue_foreach(node, cx->thunks) {
-        Thunk * t = node->data;
-        if (streq(t->name, name)) {
-            return t;
-        }
-    }
-    return NULL;
-}
-
-void add_thunk_to_context(Context * cx, Thunk * t)
-{
-    // attempt to remove a thunk with the same name
-    queue_foreach(node, cx->thunks) {
-        Thunk * tt = node->data;
-        if (streq(t->name, tt->name)) {
-            queue_erase(node);
-            // We do not destroy the associated thunk because thunks are stored
-            // on the recursion stack of execute.
-        }
-    }
-    queue_push(cx->thunks, t);
 }
 
 void print_result(Result * res)
@@ -610,13 +567,16 @@ void print_result(Result * res)
 
 void execute(Thunk * t)
 {
-    if (t->e->type == Program) {
+    if (t->res != NULL) {
+        // do nothing, this has already been calculated
+
+    } else if (t->e->type == Program) {
         queue_foreach(node, t->e->children) {
             Expression * ec = node->data;
-            Thunk * tt = new_thunk("*", ec, t->cx /* same context */);
-            execute(tt);
-            t->res = tt->res;
-            destroy_thunk(tt);
+            Thunk * tc = new_thunk("*", ec, t->context);
+            execute(tc);
+            t->res = tc->res;
+            destroy_thunk(tc);
         }
 
     } else if (t->e->type == Statement) {
@@ -626,17 +586,19 @@ void execute(Thunk * t)
         if (streq(name, "def")) {
             // add function to ftable
             expect(queue_size(t->e->children) >= 3,
-                    "Error: Expected function name and definition.");
-            int i = 0, len = queue_size(t->e->children);
-            queue_foreach(node, t->e->children) {
-                Expression * ec = node->data;
-                if (i == 0) expect(ec->type == Id, "Error: Expected function name to be id.");
-                else if (i == len-1) continue;
-                else expect(ec->type == Id, "Error: Expected function parameter to be id.");
-                i++;
-            }
+                    "Error: Expected function name and definition.\n");
+            do {
+                int i = 0, len = queue_size(t->e->children);
+                queue_foreach(node, t->e->children) {
+                    Expression * ec = node->data;
+                    if (i == 0) expect(ec->type == Id, "Error: Expected function name to be id.\n");
+                    else if (i == len-1) continue;  // TODO: need to avoid duplicates!
+                    else expect(ec->type == Id, "Error: Expected function parameter to be id.\n");
+                    i++;
+                }
+            } while (0);
             char * fname = ((Expression *) queue_begin(t->e->children)->next->data)->value;
-            expect(fname != NULL, "Error: Function name is NULL.\n");
+            expect(fname != NULL, "Error (internal): Function name is NULL.\n");
             // check if function already exists by name:
             expect(find_function(fname) == NULL,
                     "Error: function '%s' redeclaration not allowed!\n", fname);
@@ -660,8 +622,8 @@ void execute(Thunk * t)
             expect(queue_size(t->e->children) == 2,
                     "Invalid number of arguments for 'print' function.\n");
             Expression * ec = queue_begin(t->e->children)->next->data;
-            Thunk * tt = new_thunk("*", ec);
-            execute(tt, cx);
+            Thunk * tt = new_thunk("*", ec, t->context);
+            execute(tt);
             // perform print:
             print_result(tt->res);
             destroy_thunk(tt);
@@ -672,47 +634,68 @@ void execute(Thunk * t)
                     "Invalid number of arguments for '%s' function.\n", name);
             Expression * ea = queue_begin(t->e->children)->next->data;
             Expression * eb = queue_begin(t->e->children)->next->next->data;
-            Thunk * tta = new_thunk("*", ea);
-            Thunk * ttb = new_thunk("*", eb);
-            execute(tta, cx);
-            execute(ttb, cx);
+            Thunk * tta = new_thunk("*", ea, t->context);
+            Thunk * ttb = new_thunk("*", eb, t->context);
+            execute(tta);
+            execute(ttb);
             long long num;
             if (name[0] == '+') num = tta->res->num + ttb->res->num;
             if (name[0] == '-') num = tta->res->num - ttb->res->num;
             if (name[0] == '*') num = tta->res->num * ttb->res->num;
             if (name[0] == '/') num = tta->res->num / ttb->res->num;
             t->res = new_result(num, NULL, PrimitiveNumber);
-            destroy_result(tta->res);
-            destroy_result(ttb->res);
+            // Note: The result may have been reused from somewhere else,
+            //       and it still may be used elsewhere, so we cannot destroy it yet.
             destroy_thunk(tta);
             destroy_thunk(ttb);
 
         } else {
             Function * userfunc = find_function(name);
             expect(userfunc != NULL, "Error: Couldn't find function named %s!\n", name);
-            expect(queue_size(t->e->children) - 2 == queue_size(userfunc->params),
-                    "Error: Expected %d variables to function %s, but got %d!",
-                    queue_size(t->e->children), userfunc->name, queue_size(userfunc->params+2));
-            Context * cx_new = new_context(cx);
-            // Create thunks for all function parameters:
+            int num_params_expected = queue_size(userfunc->params);
+            int num_params_supplied = queue_size(t->e->children) - 1; // ignore the function name
+            expect(num_params_expected == num_params_supplied,
+                    "Error: Expected %d parameters for function %s, but got %d!",
+                    num_params_expected, name, num_params_supplied);
+            // Create a new thunk:
+            Thunk * tf = new_thunk("*", userfunc->def, NULL);
+            // For each function parameter, create a new thunk with the context
+            // of the current thunk being executed,
+            // and add it to the function thunk's context:
             Node * cur = queue_begin(t->e->children)->next;
             queue_foreach(node, userfunc->params) {
                 char * param_id = node->data;
                 Expression * ec = cur->data;
-                Thunk * tt = new_thunk(param_id, ec);
-                add_thunk_to_context(cx, tt);
+                Thunk * tp = new_thunk(param_id, ec, t->context);
+                queue_push(tf->context, tp);
                 cur = cur->next;
             }
-            Thunk * tt = new_thunk("*", userfunc->def);
-            execute(tt, cx_new);
-            t->res = tt->res;
-            destroy_thunk(tt);
-            destroy_context(cx_new);
+            execute(tf);
+            t->res = tf->res;
+            queue_foreach(node, tf->context) {
+                Thunk * tp = node->data;
+                destroy_thunk(tp);
+            }
+            destroy_thunk(tf);
         }
 
     } else if (t->e->type == List) {
+        expect(false, "Error (internal): List type not implemented yet!");
 
     } else if (t->e->type == Id) {
+        char * name = t->e->value;
+        bool found = false;
+        Thunk * tc;
+        queue_foreach(node, t->context) {
+            tc = node->data;
+            if (streq(tc->name, name)) {
+                found = true;
+                break;
+            }
+        }
+        expect(found, "Error: Symbol %s not found.\n", name);
+        execute(tc);
+        t->res = tc->res;
 
     } else if (t->e->type == Primitive) {
         if (t->e->ptype == PrimitiveNULL) {
@@ -765,20 +748,19 @@ int main(int argc, char * argv[])
 
     // parse program into rooted tree:
     Expression * program = parse_program();
-    print_expression(program, 0);
+    //print_expression(program, 0);
 
     // Initialize Function Table:
     ftable = new_queue(NULL);
 
     // Execute program:
-    Context * context = new_context(NULL);
-    Thunk * thunk = new_thunk("*", program, context);
+    Thunk * thunk = new_thunk("*", program, NULL);
     execute(thunk);
 
     // clean up
+    destroy_thunk(thunk);
     destroy_expression(program);
     destroy_queue(ftable);
-    destroy_context(context);
 
     return 0;
 }
