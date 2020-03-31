@@ -7,19 +7,20 @@
         ANY : (+ a b)
     )
 ))
+(print (fib 25))
 
-(print (fib 26))
+(def gcd a b (? (= a 0) b (gcd (% b a) a)))
+(print (gcd 2 10))
 
-#(def gcd a b (? (= a 0) b (gcd (% b a) a)))
-
-#(do
-#    (let x 3)
-#    (let y 4)
-#    (let z 5)
-#    (print
-#        (=
-#            (+ (square x) (square y))
-#            (square z)
-#        )
-#    )
-#)
+(def square x (* x x))
+(do
+    (let x 3)
+    (let y 4)
+    (let z 5)
+    (print
+        (=
+            (+ (square x) (square y))
+            (square z)
+        )
+    )
+)
