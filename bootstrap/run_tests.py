@@ -69,3 +69,7 @@ else:
     results = [run_test(test) for test in tests]
     if all(results):
         print('All tests passed!')
+
+    else:
+        tot = sum(1 if x else 0 for x in results)
+        print('Passed {} out of {} tests.'.format(tot, len(tests)))
