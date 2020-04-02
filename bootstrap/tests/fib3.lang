@@ -1,0 +1,12 @@
+(def fib n (do
+    (let a (fib (- n 1)))
+    (let b (fib (- n 2)))
+    (match n
+        0   : 0
+        1   : 1
+        ANY : (+ a b)
+    )
+))
+(print (fib 82))
+(print (fib 83))
+(print (fib 84))

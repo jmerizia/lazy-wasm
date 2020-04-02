@@ -542,8 +542,8 @@ Function * new_function(char * name, Expression * e)
     queue_foreach(node, e->children) {
         if (i > 1 && i != len-1) {
             Expression * ec = node->data;
-            expect(ec->type == Id, "Error (internal): new_function :: Bad Expression tree.");
-            expect(ec->value != NULL, "Error (internal): new_function :: Bad Expression tree.");
+            expect(ec->type == Id, "Error (internal): new_function :: Bad Expression tree.\n");
+            expect(ec->value != NULL, "Error (internal): new_function :: Bad Expression tree.\n");
             char * param = clone_string(ec->value);
             queue_push(f->params, param);
         }
@@ -674,7 +674,7 @@ void execute(Thunk * t)
             t->res = new_result(0, NULL, PrimitiveNULL);
 
         } else if (streq(name, "get")) {
-            expect(false, "Error: 'get' not implemented yet!");
+            expect(false, "Error: 'get' not implemented yet!\n");
 
         } else if (streq(name, "print")) {
             expect(queue_size(t->e->children) == 2,
@@ -852,7 +852,7 @@ void execute(Thunk * t)
         }
 
     } else if (t->e->type == List) {
-        expect(false, "Error (internal): List type not implemented yet!");
+        expect(false, "Error (internal): List type not implemented yet!\n");
 
     } else if (t->e->type == Id) {
         char * name = t->e->value;
