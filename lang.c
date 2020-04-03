@@ -198,14 +198,16 @@ enum PrimitiveType {
     PrimitiveNULL = 3,
     PrimitiveNumber = 4,
     PrimitiveString = 5,
+    PrimitiveChar = 6,
 } typedef PrimitiveType;
-char * PrimitiveTypeString[6] = {
+char * PrimitiveTypeString[7] = {
     "PrimitiveANY",
     "PrimitiveTRUE",
     "PrimitiveFALSE",
     "PrimitiveNULL",
     "PrimitiveNumber",
     "PrimitiveString",
+    "PrimitiveChar",
 };
 
 enum ExpressionType {
@@ -557,6 +559,7 @@ void print_result(Result * res)
     else if (res->type == PrimitiveNULL)   printf("NULL\n");
     else if (res->type == PrimitiveString) printf("%s\n", res->str);
     else if (res->type == PrimitiveNumber) printf("%lld\n", res->num);
+    else if (res->type == PrimitiveChar)   printf("%c\n", (char)res->num);
 }
 
 bool result_equal(Result * a, Result * b)
@@ -569,6 +572,7 @@ bool result_equal(Result * a, Result * b)
     if (a->type == PrimitiveNULL)   return true;
     if (a->type == PrimitiveString) return streq(a->str, b->str);
     if (a->type == PrimitiveNumber) return a->num == b->num;
+    if (a->type == PrimitiveChar)   return a->num == b->num;
     return false;
 }
 
@@ -580,6 +584,7 @@ bool result_is_true(Result * res)
     if (res->type == PrimitiveNULL)   return false;
     if (res->type == PrimitiveString) return true;
     if (res->type == PrimitiveNumber) return res->num != 0;
+    if (res->type == PrimitiveChar)   return res->num != 0;
     return false;
 }
 
@@ -731,6 +736,18 @@ void execute(Thunk * t)
 
         } else if (streq(name, "get")) {
             expect(false, "Error: 'get' not implemented yet!\n");
+
+        } else if (streq(name, "read_int")) {
+            expect(queue_size(t->e->children) == 1, "Error: Function %s expects no parameters.\n", name);
+            long long num;
+            scanf(" %lld", &num);
+            t->res = new_result(num, NULL, PrimitiveNumber);
+
+        } else if (streq(name, "read_char")) {
+            expect(queue_size(t->e->children) == 1, "Error: Function %s expects no parameters.\n", name);
+            char c;
+            scanf(" %c", &c);
+            t->res = new_result(c, NULL, PrimitiveChar);
 
         } else if (streq(name, "print")) {
             expect(queue_size(t->e->children) == 2,
@@ -943,6 +960,9 @@ void execute(Thunk * t)
 
         } else if (t->e->ptype == PrimitiveNumber) {
             t->res = new_result(atoi(t->e->value), NULL, PrimitiveNumber);
+
+        } else if (t->e->ptype == PrimitiveChar) {
+            t->res = new_result(t->e->value[0], NULL, PrimitiveChar);
 
         } else {
             expect(false, "Error: Couldn't match primitive expression '%s'.\n", t->e->value);
