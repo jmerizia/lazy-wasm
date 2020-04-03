@@ -15,6 +15,7 @@
 #define MAX_INPUT_LEN 100000
 #define SINGLE_CHAR_TOKENS "()[],+-*/=?:"
 #define SYSTEM_FUNCTION_TOKENS "+-*/=?%:"
+#define DEFAULT_HASHTABLE_SIZE 100
 #define streq(a, b) (strcmp((a), (b)) == 0)
 #define DEBUG
 
@@ -65,6 +66,15 @@ char * clone_string(char * s1)
 void destroy_string(char * s)
 {
     free(s);
+}
+
+long long hash_string(char * s)
+{
+    long long h = 7;
+    for (int i = 0; s[i] != '\0'; i++) {
+        h += h * 31 + s[i];
+    }
+    return h;
 }
 
 char * read_file(char * fname)
@@ -183,6 +193,95 @@ size_t queue_size(Queue * q)
     queue_foreach(node, q) len++;
     return len;
 }
+
+
+/*******************
+ *   HASH TABLE    *
+ *******************/
+
+struct HashTableItem {
+    int key;  // when key == -1, empty slot
+    void * value;
+} typedef HashTableItem;
+
+struct HashTable {
+    HashTableItem * table;
+    int size;
+    int capacity;
+} typedef HashTable;
+
+HashTable * new_hashtable(int capacity)
+{
+    HashTable * ht = malloc(sizeof(HashTable));
+    ht->table = malloc(capacity * sizeof(HashTableItem));
+    ht->size = 0;
+    ht->capacity = capacity;
+    for (int i = 0; i < capacity; i++) {
+        ht->table[i].key = -1;
+    }
+    return ht;
+}
+
+void destroy_hashtable(HashTable * ht)
+{
+    free(ht->table);
+    free(ht);
+}
+
+void hashtable_insert(HashTable * ht, long long key, void * value)
+{
+    // grow the hash table if needed:
+    if (ht->size == ht->capacity) {
+        HashTableItem * old_table = ht->table;
+        int old_capacity = ht->capacity;
+        ht->capacity *= 2;
+        ht->size = 0;
+        ht->table = malloc(ht->capacity * sizeof(HashTableItem));
+        for (int i = 0; i < old_capacity; i++) {
+            hashtable_insert(ht, old_table[i].key, old_table[i].value);
+        }
+        free(old_table);
+    }
+
+    int cap = ht->capacity;
+    for (int i = key % cap, j = 0; j < cap; i = (i + 1) % cap, j++) {
+        if (ht->table[i].key == -1) {
+            ht->table[i].key = key;
+            ht->table[i].value = value;
+            break;
+        }
+    }
+    ht->size++;
+}
+
+void hashtable_remove(HashTable * ht, long long key)
+{
+    expect(ht->size != 0, "Error: Removing item from empty HashTable.\n");
+    int cap = ht->capacity;
+    int found = false;
+    for (int i = key % cap, j = 0; j < cap; i = (i + 1) % cap, j++) {
+        if (ht->table[i].key == key) {
+            ht->table[i].key = -1;
+            found = true;
+            break;
+        }
+    }
+
+    expect(found, "Error: Couldn't find element in HashTable with key %d.\n", key);
+    ht->size--;
+}
+
+HashTableItem * hashtable_find(HashTable * ht, long long key)
+{
+    int cap = ht->capacity;
+    for (int i = key % cap, j = 0; j < cap; i = (i + 1) % cap, j++) {
+        if (ht->table[i].key == key) {
+            return ht->table + i;
+        }
+    }
+    return NULL;
+}
+
 
 /*******************
  *   EXPRESSIONS   *
@@ -588,6 +687,19 @@ bool result_is_true(Result * res)
     return false;
 }
 
+long long hash_result(Result * res)
+{
+    // reserve first 3 bits for basic types:
+    if (res->type == PrimitiveNULL)   return 0;
+    if (res->type == PrimitiveANY)    return 1;
+    if (res->type == PrimitiveTRUE)   return 2;
+    if (res->type == PrimitiveFALSE)  return 3;
+    if (res->type == PrimitiveString) return 8 * hash_string(res->str);
+    if (res->type == PrimitiveNumber) return 8 * res->num;
+    if (res->type == PrimitiveChar)   return 8 * res->num;
+    return 0;
+}
+
 Function * new_function(char * name, Expression * e)
 {
     /*
@@ -973,7 +1085,6 @@ void execute(Thunk * t)
 
 int main(int argc, char * argv[])
 {
-
     if (argc < 2) {
         printf("Usage: %s <input.lang>\n", argv[0]);
         exit(EXIT_FAILURE);
