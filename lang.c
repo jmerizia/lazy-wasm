@@ -13,7 +13,6 @@
 #include <stdarg.h>
 
 #define MAX_INPUT_LEN 100000
-#define MAX_TOKEN_LEN 1000
 #define SINGLE_CHAR_TOKENS "()[],+-*/=?:"
 #define SYSTEM_FUNCTION_TOKENS "+-*/=?%:"
 #define streq(a, b) (strcmp((a), (b)) == 0)
@@ -66,6 +65,23 @@ char * clone_string(char * s1)
 void destroy_string(char * s)
 {
     free(s);
+}
+
+char * read_file(char * fname)
+{
+    char * line;
+    FILE * fp;
+    size_t len = 0;
+    char * input = new_string(MAX_INPUT_LEN);
+
+    fp = fopen(fname, "r");
+    expect(fp != NULL, "Error: Failed to open file %s.", fname);
+    while (getline(&line, &len, fp) != -1) {
+        strcat(input, line);
+    }
+    fclose(fp);
+    if (line) free(line);
+    return input;
 }
 
 /*******************
@@ -259,60 +275,90 @@ void print_expression(Expression * e, int d)
  *     LEXING      *
  *******************/
 
-char input[MAX_INPUT_LEN];
-char token[MAX_TOKEN_LEN];
-int idx;
+struct Lexer {
+    char * input;
+    int idx;
+    int prev_idx;
+} typedef Lexer;
 
-bool lex()
+Lexer * new_lexer(char * input)
 {
-    int i = idx, j = 0;
+    Lexer * lex = malloc(sizeof(Lexer));
+    lex->input = input;
+    lex->idx = 0;
+    lex->prev_idx = -1;
+    return lex;
+}
+
+void destroy_lexer(Lexer * lex)
+{
+    free(lex);
+}
+
+char * lexer_seek(Lexer * lex)
+{
+    int l, r, i = lex->idx;
+    char * token;
 
     // skip whitespace
-    while (member_of(input[i], " \r\n\t")) i++;
+    while (member_of(lex->input[i], " \r\n\t")) i++;
 
     // skip comment
-    while (input[i] == '#') {
-        while (input[i] != '\n' && input[i] != '\0') i++;
-        if (input[i] == '\n') i++;
+    while (lex->input[i] == '#') {
+        while (lex->input[i] != '\n' && lex->input[i] != '\0') i++;
+        if (lex->input[i] == '\n') i++;
 
         // skip whitespace after comment
-        while (member_of(input[i], " \r\n\t")) i++;
+        while (member_of(lex->input[i], " \r\n\t")) i++;
     }
 
     // if no token left
-    if (input[i] == '\0') return false;
+    if (lex->input[i] == '\0') return NULL;
+
+    l = i;
 
     // if single character token
-    if (member_of(input[i], SINGLE_CHAR_TOKENS)) {
-        token[j++] = input[i++];
+    if (member_of(lex->input[i], SINGLE_CHAR_TOKENS)) {
+        i++;
 
-    } else if (input[i] == '\"') { // string token
+    } else if (lex->input[i] == '\"') { // string token
         // TODO: escape sequences!
-        token[j++] = input[i++];
-        while (input[i] != '\0' && input[i] != '\"') {
-            token[j++] = input[i++];
+        i++;
+        while (lex->input[i] != '\0' && lex->input[i] != '\"') {
+            i++;
         }
-        if (input[i] == '\"') {
-            token[j++] = input[i++];
+        if (lex->input[i] == '\"') {
+            i++;
         } else {
             printf("Error: Unterminated string\n");
         }
 
     } else { // multi character token
-        while (input[i] != '\0'
-                && !member_of(input[i], SINGLE_CHAR_TOKENS)
-                && !isspace(input[i])
-                && input[i] != '#') {
-            token[j++] = input[i++];
+        while (lex->input[i] != '\0'
+                && !member_of(lex->input[i], SINGLE_CHAR_TOKENS)
+                && !isspace(lex->input[i])
+                && lex->input[i] != '#') {
+            i++;
         }
     }
-    token[j] = '\0';
+    r = i;
 
     // check length not zero
-    expect(strlen(token) >= 1, "Token should not be empty string!\n");
-    // update global program index
-    idx = i;
-    return true;
+    expect(l < r, "Token should not be empty string!\n");
+
+    token = new_string(r-l+1);
+    substring(token, lex->input, l, r);
+
+    lex->prev_idx = lex->idx;
+    lex->idx = i;
+    return token;
+}
+
+void lexer_back(Lexer * lex)
+{
+    expect(lex->prev_idx != -1, "Error: Lexer: Invalid call to lexer_back().\n");
+    lex->idx = lex->prev_idx;
+    lex->prev_idx = -1;
 }
 
 
@@ -320,19 +366,16 @@ bool lex()
  *     PARSING     *
  *******************/
 
-Expression * parse_program(void);
-bool parse_statement (Expression * root);
-bool parse_list      (Expression * root);
-bool parse_id        (Expression * root);
-bool parse_primitive (Expression * root);
+Expression * parse_program(Lexer * lex);
+bool parse_statement (Expression * root, Lexer * lex);
+bool parse_list      (Expression * root, Lexer * lex);
+bool parse_id        (Expression * root, Lexer * lex);
+bool parse_primitive (Expression * root, Lexer * lex);
 
-bool parse_primitive(Expression * root)
+bool parse_primitive(Expression * root, Lexer * lex)
 {
-    int prv_idx = idx;
-    if (!lex()) {
-        printf("Error: Expected token\n");
-        exit(EXIT_FAILURE);
-    }
+    char * token = lexer_seek(lex);
+    expect(token != NULL, "Error: Expected token.\n");
     int len = strlen(token);
     bool is_num = strcmp(token, "0") == 0 ? true : atoi(token) != 0;
     bool is_str = token[0] == '\"' && token[len-1] == '\"';
@@ -341,7 +384,8 @@ bool parse_primitive(Expression * root)
     bool is_false = (strcmp(token, "FALSE") == 0);
     bool is_null = (strcmp(token, "NULL") == 0);
     if (!(is_num || is_str || is_any || is_true || is_false || is_null)) {
-        idx = prv_idx;
+        lexer_back(lex);
+        destroy_string(token);
         return false;
     }
     PrimitiveType ptype;
@@ -362,76 +406,88 @@ bool parse_primitive(Expression * root)
         e = new_expression(token, Primitive, ptype);
     }
     queue_push(root->children, e);
+    destroy_string(token);
     return true;
 }
 
-bool parse_id(Expression * root)
+bool parse_id(Expression * root, Lexer * lex)
 {
-    int prv_idx = idx;
-    if (!lex()) {
-        printf("Error: Expected token\n");
-        exit(EXIT_FAILURE);
-    }
+    char * token = lexer_seek(lex);
+    expect(token != NULL, "Error: Expected token.\n");
     Expression * e = new_expression(token, Id, PrimitiveANY);
     bool is_id = true;
     for (int i = 0; token[i] != '\0'; i++) {
-        if (!(isalpha(token[i]) || member_of(token[i], SYSTEM_FUNCTION_TOKENS))) {
+        if (!(isalpha(token[i]) ||
+                    member_of(token[i], SYSTEM_FUNCTION_TOKENS) ||
+                    token[i] == '_')) {
             is_id = false;
             break;
         }
     }
     if (!is_id) {
-        idx = prv_idx; // go back to previous token
+        lexer_back(lex);
         destroy_expression(e);
+        destroy_string(token);
         return false;
     }
     queue_push(root->children, e);
+    destroy_string(token);
     return true;
 }
 
-bool parse_list(Expression * root)
+bool parse_list(Expression * root, Lexer * lex)
 {
-    int prv_idx = idx;
-    if (!lex()) {
-        printf("Error: Expected token\n");
-        exit(EXIT_FAILURE);
-    }
+    char * token = lexer_seek(lex);
+    expect(token != NULL, "Error: Expected token.\n");
     Expression * e = new_expression(NULL, List, PrimitiveANY);
     if (strcmp(token, "[") != 0) {
+        lexer_back(lex);
         destroy_expression(e);
-        idx = prv_idx;
+        destroy_string(token);
         return false;
     }
-    while (parse_id(e) || parse_statement(e) || parse_list(e) || parse_primitive(e));
-    lex();
+    while (parse_id(e, lex) ||
+           parse_statement(e, lex) ||
+           parse_list(e, lex) ||
+           parse_primitive(e, lex));
+    token = lexer_seek(lex);
     expect(strcmp(token, "]") == 0, "Error: Expected closing paren!\n");
     e->value = NULL;
     e->type = List;
     queue_push(root->children, e);
+    destroy_string(token);
     return true;
 }
 
-bool parse_statement(Expression * root)
+bool parse_statement(Expression * root, Lexer * lex)
 {
-    int prv_idx = idx;
-    if (!lex()) return false;
-    Expression * e = new_expression(NULL, Statement, PrimitiveANY);
-    if (strcmp(token, "(") != 0 || !parse_id(e)) {
-        destroy_expression(e);
-        idx = prv_idx; // go back to previous token
+    char * token = lexer_seek(lex);
+    if (token == NULL) {
+        destroy_string(token);
         return false;
     }
-    while (parse_primitive(e) || parse_id(e) || parse_statement(e) || parse_list(e));
-    lex();
+    Expression * e = new_expression(NULL, Statement, PrimitiveANY);
+    if (strcmp(token, "(") != 0 || !parse_id(e, lex)) {
+        lexer_back(lex);
+        destroy_expression(e);
+        destroy_string(token);
+        return false;
+    }
+    while (parse_primitive(e, lex) ||
+           parse_id(e, lex) ||
+           parse_statement(e, lex) ||
+           parse_list(e, lex));
+    token = lexer_seek(lex);
     expect(strcmp(token, ")") == 0, "Error: Expected closing paren!\n");
     queue_push(root->children, e);
+    destroy_string(token);
     return true;
 }
 
-Expression * parse_program()
+Expression * parse_program(Lexer * lex)
 {
     Expression * e = new_expression(NULL, Program, PrimitiveANY);
-    while (parse_statement(e));
+    while (parse_statement(e, lex));
     return e;
 }
 
@@ -897,9 +953,6 @@ void execute(Thunk * t)
 
 int main(int argc, char * argv[])
 {
-    char * line;
-    FILE * fp;
-    size_t len = 0;
 
     if (argc < 2) {
         printf("Usage: %s <input.lang>\n", argv[0]);
@@ -907,19 +960,11 @@ int main(int argc, char * argv[])
     }
 
     // Read input from file:
-    fp = fopen(argv[1], "r");
-    if (fp == NULL) {
-        perror("fopen");
-        exit(EXIT_FAILURE);
-    }
-    while (getline(&line, &len, fp) != -1) {
-        strcat(input, line);
-    }
-    fclose(fp);
-    if (line) free(line);
+    char * input = read_file(argv[1]);
 
-    // parse program into rooted tree:
-    Expression * program = parse_program();
+    // lex/parse program into rooted tree:
+    Lexer * lex = new_lexer(input);
+    Expression * program = parse_program(lex);
     //print_expression(program, 0);
 
     // Initialize Function Table:
@@ -935,6 +980,8 @@ int main(int argc, char * argv[])
     destroy_queue(context);
     destroy_expression(program);
     destroy_queue(ftable);
+    destroy_lexer(lex);
+    destroy_string(input);
 
     return 0;
 }
