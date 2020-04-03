@@ -1,0 +1,8 @@
+(def print_string str
+    (let c (@ str 1))
+    (? (!= c NULL)
+        (&&
+            (print_char c)
+            (print_string (@ str 2)))
+        NULL))
+

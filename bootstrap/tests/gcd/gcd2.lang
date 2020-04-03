@@ -1,0 +1,4 @@
+(def gcd a b (? (= a 0) b (gcd (% b a) a)))
+(print (gcd 1123456789123 123))
+(print (gcd 1 1))
+(print (gcd 1000000000 1000000000))

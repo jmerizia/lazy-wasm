@@ -20,7 +20,6 @@ def run_test(name):
             stdin=inp, stdout=subprocess.PIPE)
     st = time.time()
     tle = False
-    print('st')
     while p.poll() is None:
         time.sleep(0.1)
         en = time.time()
@@ -41,10 +40,10 @@ def run_test(name):
     if out != exp:
         print('[RUNNER] Test "{}" Failed!'.format(name), 'Wrong Answer!')
         print('[RUNNER]   Output:  ',
-                '"' + out[:MAX_DIFF_LENGTH] + \
+                '"' + out[:MAX_DIFF_LENGTH].replace('\n', '\\n') + \
                         ('...' if len(out) > MAX_DIFF_LENGTH else '') + '"')
         print('[RUNNER]   Expected:',
-                '"' + exp[:MAX_DIFF_LENGTH] + \
+                '"' + exp[:MAX_DIFF_LENGTH].replace('\n', '\\n') + \
                         ('...' if len(exp) > MAX_DIFF_LENGTH else '') + '"')
         return False
 
@@ -62,14 +61,11 @@ if len(sys.argv) > 1:
 
 else:
     tests = []
-    for fname in os.listdir(TEST_DIR):
-        if fname.endswith('.lang'):
-            tests.append(fname[:-5])
+    for types in os.listdir(TEST_DIR):
+        for fname in os.listdir(os.path.join(TEST_DIR, types)):
+            if fname.endswith('.lang'):
+                tests.append(os.path.join(types, fname[:-5]))
 
     results = [run_test(test) for test in tests]
-    if all(results):
-        print('All tests passed!')
-
-    else:
-        tot = sum(1 if x else 0 for x in results)
-        print('Passed {} out of {} tests.'.format(tot, len(tests)))
+    tot = sum(1 if x else 0 for x in results)
+    print('Passed {}/{} tests.'.format(tot, len(tests)))
