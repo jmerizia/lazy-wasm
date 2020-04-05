@@ -13,6 +13,8 @@
 #include <stdarg.h>
 #include <limits.h>
 
+#define DEBUG
+
 #define MAX_INPUT_LEN 100000
 #define SINGLE_CHAR_TOKENS "()[],+-*/=?:"
 #define SYSTEM_FUNCTION_TOKENS "+-*/=?%:"
@@ -44,7 +46,6 @@
 #define HASH_OF_TRUE      10179301
 #define HASH_OF_FALSE     310491813
 
-#define DEBUG
 
 /*******************
  *     HELPERS     *
@@ -58,16 +59,13 @@ bool member_of(char c, char * set)
     return false;
 }
 
-void expect(bool condition, char * msg, ...)
-{
-    if (!condition) {
-        va_list argptr;
-        va_start(argptr, msg);
-        vfprintf(stderr, msg, argptr);
-        exit(EXIT_FAILURE);
-        va_end(argptr);
-    }
-}
+#define expect(condition, ...)             \
+    do {                                   \
+        if (!(condition)) {                \
+            fprintf(stderr, __VA_ARGS__);  \
+            exit(EXIT_FAILURE);            \
+        }                                  \
+    } while (0);
 
 void substring(char * dst, char * src, int l, int r)
 {
@@ -301,7 +299,7 @@ void hashtable_remove(HashTable * ht, HASH_TYPE key)
         }
     }
 
-    expect(found, "Error: Couldn't find element in HashTable with key %d.\n", key);
+    expect(found, "Error: Couldn't find element in HashTable with key %lld.\n", key);
     ht->size--;
 }
 
@@ -880,8 +878,8 @@ void execute(Thunk * t, HashTable * symbols)
                 queue_foreach(node, t->e->children) {
                     Expression * ec = node->data;
                     if (i == 0) expect(ec->type == Id, "Error: Expected function name to be id.\n");
-                    else if (i == len-1) continue;  // TODO: need to avoid duplicates!
-                    else expect(ec->type == Id, "Error: Expected function parameter to be id.\n");
+                    if (i == len-1) continue;  // TODO: need to avoid duplicates!
+                    expect(ec->type == Id, "Error: Expected function parameter to be id.\n");
                     i++;
                 }
             } while (0);
@@ -1178,10 +1176,7 @@ void execute(Thunk * t, HashTable * symbols)
 
 int main(int argc, char * argv[])
 {
-    if (argc < 2) {
-        printf("Usage: %s <input.lang>\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
+    expect(argc >= 2, "Usage: %s <input.lang>\n", argv[0]);
 
     // Read input from file:
     char * input = read_file(argv[1]);
