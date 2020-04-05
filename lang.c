@@ -135,6 +135,7 @@ struct Node {
 struct Queue {
     Node * head;
     Node * tail;
+    size_t size;
 } typedef Queue;
 
 /* function headers */
@@ -163,6 +164,7 @@ Node * queue_end(Queue * q) { return q->tail; }
 Queue * new_queue(Queue * q_old)
 {
     Queue * q = malloc(sizeof(Queue));
+    q->size = 0;
     q->head = malloc(sizeof(Node));
     q->tail = malloc(sizeof(Node));
     q->head->data = NULL;
@@ -199,24 +201,24 @@ void queue_push(Queue * q, void * data)
     n->prev = q->tail->prev;
     q->tail->prev = n;
     n->next = q->tail;
+    q->size++;
 }
 
-void queue_erase(Node * node)
+void queue_remove(Queue * q, Node * node)
 {
-    expect(node->prev != NULL, "Error (internal): queue_erase.\n");
-    expect(node->next != NULL, "Error (internal): queue_erase.\n");
+    expect(node->prev != NULL, "Error (internal): queue_remove.\n");
+    expect(node->next != NULL, "Error (internal): queue_remove.\n");
     Node * n = node->next;
     Node * p = node->prev;
     p->next = n;
     n->prev = p;
     destroy_node(node);
+    q->size--;
 }
 
 size_t queue_size(Queue * q)
 {
-    size_t len = 0;
-    queue_foreach(node, q) len++;
-    return len;
+    return q->size;
 }
 
 
