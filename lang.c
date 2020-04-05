@@ -11,12 +11,39 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <limits.h>
 
 #define MAX_INPUT_LEN 100000
 #define SINGLE_CHAR_TOKENS "()[],+-*/=?:"
 #define SYSTEM_FUNCTION_TOKENS "+-*/=?%:"
 #define DEFAULT_HASHTABLE_SIZE 100
+#define ANONYMOUS_THUNK_HASH hash_string("*")
+#define HASH_TYPE long long
 #define streq(a, b) (strcmp((a), (b)) == 0)
+
+// Some heavily used, pre-computed string hashes:
+#define HASH_OF_DEF       335110
+#define HASH_OF_LET       343316
+#define HASH_OF_DO        10479
+#define HASH_OF_MATCH     352476360
+#define HASH_OF_TIMES     266
+#define HASH_OF_PLUS      267
+#define HASH_OF_MINUS     269
+#define HASH_OF_DIVIDE    271
+#define HASH_OF_PERCENT   261
+#define HASH_OF_COMMA     268
+#define HASH_OF_EQUAL     285
+#define HASH_OF_COLON     282
+#define HASH_OF_QUESTION  287
+#define HASH_OF_READ_INT  11725402354228
+#define HASH_OF_READ_CHAR 375212875132050
+#define HASH_OF_PRINT     356168244
+#define HASH_OF_GET       338196
+#define HASH_OF_NULL      9985484
+#define HASH_OF_ANY       298521
+#define HASH_OF_TRUE      10179301
+#define HASH_OF_FALSE     310491813
+
 #define DEBUG
 
 /*******************
@@ -68,9 +95,9 @@ void destroy_string(char * s)
     free(s);
 }
 
-long long hash_string(char * s)
+HASH_TYPE hash_string(char * s)
 {
-    long long h = 7;
+    HASH_TYPE h = 7;
     for (int i = 0; s[i] != '\0'; i++) {
         h += h * 31 + s[i];
     }
@@ -200,13 +227,14 @@ size_t queue_size(Queue * q)
  *******************/
 
 struct HashTableItem {
-    int key;  // when key == -1, empty slot
+    HASH_TYPE key;
     void * value;
+    bool set;
 } typedef HashTableItem;
 
 struct HashTable {
     HashTableItem * table;
-    int size;
+    size_t size;
     int capacity;
 } typedef HashTable;
 
@@ -217,7 +245,7 @@ HashTable * new_hashtable(int capacity)
     ht->size = 0;
     ht->capacity = capacity;
     for (int i = 0; i < capacity; i++) {
-        ht->table[i].key = -1;
+        ht->table[i].set = false;
     }
     return ht;
 }
@@ -228,7 +256,12 @@ void destroy_hashtable(HashTable * ht)
     free(ht);
 }
 
-void hashtable_insert(HashTable * ht, long long key, void * value)
+#define hashtable_foreach(node, ht)                     \
+    for (HashTableItem * node = (ht)->table;            \
+         node != (ht)->table + (ht)->capacity;          \
+         node++) if (node->set)
+
+void hashtable_insert(HashTable * ht, HASH_TYPE key, void * value)
 {
     // grow the hash table if needed:
     if (ht->size == ht->capacity) {
@@ -245,7 +278,8 @@ void hashtable_insert(HashTable * ht, long long key, void * value)
 
     int cap = ht->capacity;
     for (int i = key % cap, j = 0; j < cap; i = (i + 1) % cap, j++) {
-        if (ht->table[i].key == -1) {
+        if (!ht->table[i].set) {
+            ht->table[i].set = true;
             ht->table[i].key = key;
             ht->table[i].value = value;
             break;
@@ -254,14 +288,14 @@ void hashtable_insert(HashTable * ht, long long key, void * value)
     ht->size++;
 }
 
-void hashtable_remove(HashTable * ht, long long key)
+void hashtable_remove(HashTable * ht, HASH_TYPE key)
 {
     expect(ht->size != 0, "Error: Removing item from empty HashTable.\n");
     int cap = ht->capacity;
     int found = false;
     for (int i = key % cap, j = 0; j < cap; i = (i + 1) % cap, j++) {
-        if (ht->table[i].key == key) {
-            ht->table[i].key = -1;
+        if (ht->table[i].set && ht->table[i].key == key) {
+            ht->table[i].set = false;
             found = true;
             break;
         }
@@ -271,15 +305,20 @@ void hashtable_remove(HashTable * ht, long long key)
     ht->size--;
 }
 
-HashTableItem * hashtable_find(HashTable * ht, long long key)
+HashTableItem * hashtable_find(HashTable * ht, HASH_TYPE key)
 {
     int cap = ht->capacity;
     for (int i = key % cap, j = 0; j < cap; i = (i + 1) % cap, j++) {
-        if (ht->table[i].key == key) {
+        if (ht->table[i].set && ht->table[i].key == key) {
             return ht->table + i;
         }
     }
     return NULL;
+}
+
+size_t hashtable_size(HashTable * ht)
+{
+    return ht->size;
 }
 
 
@@ -325,27 +364,25 @@ char * ExpressionTypeString[5] = {
 };
 
 struct Expression {
-    char * value;
+    HASH_TYPE value;
     Queue/*<Expression>*/ * children;
     ExpressionType type;
     PrimitiveType ptype;
+    char * str;
 } typedef Expression;
 
-Expression * new_expression(char * value, ExpressionType type, PrimitiveType ptype);
+Expression * new_expression(HASH_TYPE value, ExpressionType type, PrimitiveType ptype, char * str);
 void destroy_expression(Expression * e);
-void print_expression(Expression * e, int d);
+void print_expression(Expression * e, HashTable * symbols, int d);
 
-Expression * new_expression(char * value, ExpressionType type, PrimitiveType ptype)
+Expression * new_expression(HASH_TYPE value, ExpressionType type, PrimitiveType ptype, char * str)
 {
     Expression * e = malloc(sizeof(Expression));
     e->children = new_queue(NULL);
-    if (value != NULL) {
-        e->value = clone_string(value);
-    } else {
-        e->value = NULL;
-    }
+    e->value = value;
     e->type = type;
     e->ptype = ptype;
+    e->str = str == NULL ? NULL : clone_string(str);
     return e;
 }
 
@@ -354,20 +391,32 @@ void destroy_expression(Expression * e)
     queue_foreach(node, e->children) {
         destroy_expression(node->data);
     }
+    if (e->str) free(e->str);
     destroy_queue(e->children);
-    free(e->value);
     free(e);
 }
 
-void print_expression(Expression * e, int d)
+void print_expression(Expression * e, HashTable * symbols, int d)
 {
     for (int i = 0; i < d; i++) printf("  ");
-    printf("%s : %s (%s)\n",
-            ExpressionTypeString[e->type],
-            e->value == NULL ? "0" : e->value,
-            e->type == Primitive ? PrimitiveTypeString[e->ptype] : "-");
+    printf("%s : ", ExpressionTypeString[e->type]);
+    if (e->type == Primitive) {
+        if (e->ptype == PrimitiveString) {
+            printf("(\"%s\")\n", e->str);
+        } else if (e->ptype == PrimitiveNumber) {
+            printf("(%lld)\n", e->value);
+        } else {
+            HashTableItem * item = hashtable_find(symbols, e->value);
+            expect(item != NULL, "Error (internal): Primitive Expression should have token.\n");
+            printf("(%s)\n", (char *)item->value);
+        }
+    } else {
+        HashTableItem * item = hashtable_find(symbols, e->value);
+        expect(item != NULL, "Error (internal): Non-Primitive expression should have token.\n");
+        printf("%s : %s\n", ExpressionTypeString[e->type], (char *)item->value);
+    }
     queue_foreach(node, e->children) {
-        print_expression(node->data, d+1);
+        print_expression(node->data, symbols, d+1);
     }
 }
 
@@ -376,10 +425,34 @@ void print_expression(Expression * e, int d)
  *     LEXING      *
  *******************/
 
+HashTable * new_symbol_table()
+{
+    HashTable * symbols = new_hashtable(DEFAULT_HASHTABLE_SIZE);
+    hashtable_insert(symbols, HASH_OF_DEF,       clone_string("def"     ));
+    hashtable_insert(symbols, HASH_OF_LET,       clone_string("let"     ));
+    hashtable_insert(symbols, HASH_OF_DO,        clone_string("do"      ));
+    hashtable_insert(symbols, HASH_OF_MATCH,     clone_string("match"   ));
+    hashtable_insert(symbols, HASH_OF_TIMES,     clone_string("*"       ));
+    hashtable_insert(symbols, HASH_OF_PLUS,      clone_string("+"       ));
+    hashtable_insert(symbols, HASH_OF_MINUS,     clone_string("-"       ));
+    hashtable_insert(symbols, HASH_OF_DIVIDE,    clone_string("/"       ));
+    hashtable_insert(symbols, HASH_OF_PERCENT,   clone_string("%"       ));
+    hashtable_insert(symbols, HASH_OF_COMMA,     clone_string(","       ));
+    hashtable_insert(symbols, HASH_OF_EQUAL,     clone_string("="       ));
+    hashtable_insert(symbols, HASH_OF_COLON,     clone_string(":"       ));
+    hashtable_insert(symbols, HASH_OF_QUESTION,  clone_string("?"       ));
+    hashtable_insert(symbols, HASH_OF_READ_INT,  clone_string("read_int"));
+    hashtable_insert(symbols, HASH_OF_READ_CHAR, clone_string("read_char"));
+    hashtable_insert(symbols, HASH_OF_PRINT,     clone_string("print"   ));
+    hashtable_insert(symbols, HASH_OF_GET,       clone_string("get"     ));
+    return symbols;
+}
+
 struct Lexer {
     char * input;
     int idx;
     int prev_idx;
+    HashTable * symbols;
 } typedef Lexer;
 
 Lexer * new_lexer(char * input)
@@ -388,11 +461,18 @@ Lexer * new_lexer(char * input)
     lex->input = input;
     lex->idx = 0;
     lex->prev_idx = -1;
+    lex->symbols = new_symbol_table();
     return lex;
 }
 
 void destroy_lexer(Lexer * lex)
 {
+    hashtable_foreach(node, lex->symbols) {
+        char * token = node->value;
+        expect(token != NULL, "Error (internal): destroy_lexer(): token is null.\n");
+        free(token);
+    }
+    destroy_hashtable(lex->symbols);
     free(lex);
 }
 
@@ -428,11 +508,8 @@ char * lexer_seek(Lexer * lex)
         while (lex->input[i] != '\0' && lex->input[i] != '\"') {
             i++;
         }
-        if (lex->input[i] == '\"') {
-            i++;
-        } else {
-            printf("Error: Unterminated string\n");
-        }
+        expect(lex->input[i] == '\"', "Error: Unterminated string.\n");
+        i++;
 
     } else { // multi character token
         while (lex->input[i] != '\0'
@@ -447,8 +524,18 @@ char * lexer_seek(Lexer * lex)
     // check length not zero
     expect(l < r, "Token should not be empty string!\n");
 
+    // Add this token to the symbol table:
     token = new_string(r-l+1);
     substring(token, lex->input, l, r);
+    HASH_TYPE key = hash_string(token);
+    HashTableItem * item = hashtable_find(lex->symbols, key);
+    if (item == NULL) {
+        hashtable_insert(lex->symbols, key, token);
+    } else {
+        // destroy the string we made so we can output the already allocated token
+        destroy_string(token);
+        token = item->value;
+    }
 
     lex->prev_idx = lex->idx;
     lex->idx = i;
@@ -457,7 +544,7 @@ char * lexer_seek(Lexer * lex)
 
 void lexer_back(Lexer * lex)
 {
-    expect(lex->prev_idx != -1, "Error: Lexer: Invalid call to lexer_back().\n");
+    expect(lex->prev_idx != -1, "Error (internal): Lexer: Invalid call to lexer_back().\n");
     lex->idx = lex->prev_idx;
     lex->prev_idx = -1;
 }
@@ -486,7 +573,6 @@ bool parse_primitive(Expression * root, Lexer * lex)
     bool is_null = (strcmp(token, "NULL") == 0);
     if (!(is_num || is_str || is_any || is_true || is_false || is_null)) {
         lexer_back(lex);
-        destroy_string(token);
         return false;
     }
     PrimitiveType ptype;
@@ -496,18 +582,23 @@ bool parse_primitive(Expression * root, Lexer * lex)
     else if (is_true)  ptype = PrimitiveTRUE;
     else if (is_false) ptype = PrimitiveFALSE;
     else if (is_null)  ptype = PrimitiveNULL;
-    Expression * e;
+    HASH_TYPE key;
+    char * str;
     if (is_str) {
+        key = 0;
         int sz = strlen(token);
-        char * tmp = new_string(sz);
-        substring(tmp, token, 1, sz-1);
-        e = new_expression(tmp, Primitive, ptype);
-        free(tmp);
+        str = new_string(sz);
+        substring(str, token, 1, sz-1);
+    } else if (is_num) {
+        key = atoi(token);
+        str = NULL;
     } else {
-        e = new_expression(token, Primitive, ptype);
+        key = hash_string(token);
+        str = NULL;
     }
+    Expression * e = new_expression(key, Primitive, ptype, str);
     queue_push(root->children, e);
-    destroy_string(token);
+    if (str) destroy_string(str);
     return true;
 }
 
@@ -515,7 +606,8 @@ bool parse_id(Expression * root, Lexer * lex)
 {
     char * token = lexer_seek(lex);
     expect(token != NULL, "Error: Expected token.\n");
-    Expression * e = new_expression(token, Id, PrimitiveANY);
+    HASH_TYPE key = hash_string(token);
+    Expression * e = new_expression(key, Id, PrimitiveANY, NULL);
     bool is_id = true;
     for (int i = 0; token[i] != '\0'; i++) {
         if (!(isalpha(token[i]) ||
@@ -528,11 +620,9 @@ bool parse_id(Expression * root, Lexer * lex)
     if (!is_id) {
         lexer_back(lex);
         destroy_expression(e);
-        destroy_string(token);
         return false;
     }
     queue_push(root->children, e);
-    destroy_string(token);
     return true;
 }
 
@@ -540,11 +630,11 @@ bool parse_list(Expression * root, Lexer * lex)
 {
     char * token = lexer_seek(lex);
     expect(token != NULL, "Error: Expected token.\n");
-    Expression * e = new_expression(NULL, List, PrimitiveANY);
+    HASH_TYPE key = hash_string(token);
+    Expression * e = new_expression(key, List, PrimitiveANY, NULL);
     if (strcmp(token, "[") != 0) {
         lexer_back(lex);
         destroy_expression(e);
-        destroy_string(token);
         return false;
     }
     while (parse_id(e, lex) ||
@@ -553,10 +643,7 @@ bool parse_list(Expression * root, Lexer * lex)
            parse_primitive(e, lex));
     token = lexer_seek(lex);
     expect(strcmp(token, "]") == 0, "Error: Expected closing paren!\n");
-    e->value = NULL;
-    e->type = List;
     queue_push(root->children, e);
-    destroy_string(token);
     return true;
 }
 
@@ -564,14 +651,13 @@ bool parse_statement(Expression * root, Lexer * lex)
 {
     char * token = lexer_seek(lex);
     if (token == NULL) {
-        destroy_string(token);
         return false;
     }
-    Expression * e = new_expression(NULL, Statement, PrimitiveANY);
+    HASH_TYPE key = hash_string(token);
+    Expression * e = new_expression(key, Statement, PrimitiveANY, NULL);
     if (strcmp(token, "(") != 0 || !parse_id(e, lex)) {
         lexer_back(lex);
         destroy_expression(e);
-        destroy_string(token);
         return false;
     }
     while (parse_primitive(e, lex) ||
@@ -581,13 +667,12 @@ bool parse_statement(Expression * root, Lexer * lex)
     token = lexer_seek(lex);
     expect(strcmp(token, ")") == 0, "Error: Expected closing paren!\n");
     queue_push(root->children, e);
-    destroy_string(token);
     return true;
 }
 
 Expression * parse_program(Lexer * lex)
 {
-    Expression * e = new_expression(NULL, Program, PrimitiveANY);
+    Expression * e = new_expression(ANONYMOUS_THUNK_HASH, Program, PrimitiveANY, NULL);
     while (parse_statement(e, lex));
     return e;
 }
@@ -614,8 +699,8 @@ struct Result {
  *   TODO: Make functions scoped locally to a thunk
  */
 struct Function {
-    char * name;
-    Queue/*<char *>*/ * params;
+    HASH_TYPE name;
+    Queue/*<HASH_TYPE>*/ * params;
     Expression * def;
 } typedef Function;
 Queue/*<Function>*/ * ftable;
@@ -625,13 +710,13 @@ Queue/*<Function>*/ * ftable;
  *   - Destruction: After execution returns
  */
 struct Thunk {
-    char * name;  // variable name
+    HASH_TYPE name;  // variable name
     Expression * e;
     Result * res;
     Queue/*<Thunk>*/ * context;
 } typedef Thunk;
 
-Result * new_result(long long num, char * str, PrimitiveType type)
+Result * new_result(HASH_TYPE num, char * str, PrimitiveType type)
 {
     Result * res = malloc(sizeof(Result));
     res->num = num;
@@ -687,7 +772,7 @@ bool result_is_true(Result * res)
     return false;
 }
 
-long long hash_result(Result * res)
+HASH_TYPE hash_result(Result * res)
 {
     // reserve first 3 bits for basic types:
     if (res->type == PrimitiveNULL)   return 0;
@@ -700,7 +785,7 @@ long long hash_result(Result * res)
     return 0;
 }
 
-Function * new_function(char * name, Expression * e)
+Function * new_function(HASH_TYPE name, Expression * e)
 {
     /*
      * This function expects the sub-Expression queue to be formatted like so:
@@ -709,16 +794,16 @@ Function * new_function(char * name, Expression * e)
      * Minimum expected queue size = 3 ("def", name, and declaration)
      */
     Function * f = malloc(sizeof(Function));
-    f->name = clone_string(name);
+    f->name = name;
     f->params = new_queue(NULL);
     int i = 0, len = queue_size(e->children);
     queue_foreach(node, e->children) {
         if (i > 1 && i != len-1) {
             Expression * ec = node->data;
-            expect(ec->type == Id, "Error (internal): new_function :: Bad Expression tree.\n");
-            expect(ec->value != NULL, "Error (internal): new_function :: Bad Expression tree.\n");
-            char * param = clone_string(ec->value);
-            queue_push(f->params, param);
+            expect(ec->type == Id,
+                    "Error (internal): new_function :: Bad Expression tree.\n");
+            HASH_TYPE param = ec->value;
+            queue_push(f->params, (void *) param);
         }
         i++;
     }
@@ -728,21 +813,16 @@ Function * new_function(char * name, Expression * e)
 
 void destroy_function(Function * f)
 {
-    queue_foreach(node, f->params) {
-        char * param = node->data;
-        free(param);
-    }
-    free(f->name);
+    destroy_queue(f->params);
     free(f);
 }
 
-Thunk * new_thunk(char * name /*required*/, Expression * e, Queue/*<Thunk>*/ * context)
+Thunk * new_thunk(HASH_TYPE name /*required*/, Expression * e, Queue/*<Thunk>*/ * context)
 {
-    expect(name != NULL, "Error (internal): Thunk name should not be NULL.\n");
     Thunk * t = malloc(sizeof(Thunk));
     t->e = e;
     t->res = NULL;
-    t->name = clone_string(name);
+    t->name = name;
     // This is tricky: Sometimes, we want a shared context between thunks,
     // sometimes we want a completely new  and empty context,
     // and sometimes we want a clone of the parent context (to avoid contamination).
@@ -753,22 +833,21 @@ Thunk * new_thunk(char * name /*required*/, Expression * e, Queue/*<Thunk>*/ * c
 
 void destroy_thunk(Thunk * t)
 {
-    free(t->name);
     free(t);
 }
 
-Function * find_function(char * name)
+Function * find_function(HASH_TYPE name)
 {
     queue_foreach(node, ftable) {
         Function * f = node->data;
-        if (streq(f->name, name)) {
+        if (f->name == name) {
             return f;
         }
     }
     return NULL;
 }
 
-void execute(Thunk * t)
+void execute(Thunk * t, HashTable * symbols)
 {
     if (t->res != NULL) {
         // do nothing, this has already been calculated
@@ -781,8 +860,8 @@ void execute(Thunk * t)
         Queue/*<Thunk>*/ * context = new_queue(t->context);
         queue_foreach(node, t->e->children) {
             ec = node->data;
-            tc = new_thunk("*", ec, context);
-            execute(tc);
+            tc = new_thunk(ANONYMOUS_THUNK_HASH, ec, context);
+            execute(tc, symbols);
             t->res = tc->res;
             destroy_thunk(tc);
         }
@@ -791,8 +870,8 @@ void execute(Thunk * t)
     } else if (t->e->type == Statement) {
         expect(queue_size(t->e->children) >= 1,
                 "Error: Expected Statement to have more children.\n");
-        char * name = ((Expression *) queue_begin(t->e->children)->data)->value;
-        if (streq(name, "def")) {
+        HASH_TYPE name = ((Expression *) queue_begin(t->e->children)->data)->value;
+        if (name == HASH_OF_DEF) {
             // add function to ftable
             expect(queue_size(t->e->children) >= 3,
                     "Error: Expected function name and definition.\n");
@@ -806,35 +885,33 @@ void execute(Thunk * t)
                     i++;
                 }
             } while (0);
-            char * fname = ((Expression *) queue_begin(t->e->children)->next->data)->value;
-            expect(fname != NULL, "Error (internal): Function name is NULL.\n");
+            HASH_TYPE fname = ((Expression *) queue_begin(t->e->children)->next->data)->value;
             // check if function already exists by name:
             expect(find_function(fname) == NULL,
-                    "Error: function '%s' redeclaration not allowed!\n", fname);
+                    "Error: function '%s' redeclaration not allowed!\n",
+                    (char *)hashtable_find(symbols, fname)->value);
 
             Function * f = new_function(fname, t->e);
             queue_push(ftable, f);
 
-        } else if (streq(name, "do")) {
-            do {
-                int i = 0;
-                Expression * ec;
-                Thunk * tc;
-                Queue/*<Thunk>*/ * context = new_queue(t->context);
-                queue_foreach(node, t->e->children) {
-                    if (i != 0) {
-                        ec = node->data;
-                        tc = new_thunk("*", ec, context);
-                        execute(tc);
-                        t->res = tc->res;
-                        destroy_thunk(tc);
-                    }
-                    i++;
+        } else if (name == HASH_OF_DO) {
+            int i = 0;
+            Expression * ec;
+            Thunk * tc;
+            Queue/*<Thunk>*/ * context = new_queue(t->context);
+            queue_foreach(node, t->e->children) {
+                if (i != 0) {
+                    ec = node->data;
+                    tc = new_thunk(ANONYMOUS_THUNK_HASH, ec, context);
+                    execute(tc, symbols);
+                    t->res = tc->res;
+                    destroy_thunk(tc);
                 }
-                destroy_queue(context);
-            } while (0);
+                i++;
+            }
+            destroy_queue(context);
 
-        } else if (streq(name, "let")) {
+        } else if (name == HASH_OF_LET) {
             expect(queue_size(t->e->children) == 3,
                     "Error: Expected 'let' statement to be given 2 parameters.\n");
             Expression * id = queue_begin(t->e->children)->next->data;
@@ -846,33 +923,35 @@ void execute(Thunk * t)
             queue_push(t->context, tc);
             t->res = new_result(0, NULL, PrimitiveNULL);
 
-        } else if (streq(name, "get")) {
+        } else if (name == HASH_OF_GET) {
             expect(false, "Error: 'get' not implemented yet!\n");
 
-        } else if (streq(name, "read_int")) {
-            expect(queue_size(t->e->children) == 1, "Error: Function %s expects no parameters.\n", name);
+        } else if (name == HASH_OF_READ_INT) {
+            expect(queue_size(t->e->children) == 1,
+                    "Error: Function 'read_int' expects no parameters.\n");
             long long num;
             scanf(" %lld", &num);
             t->res = new_result(num, NULL, PrimitiveNumber);
 
-        } else if (streq(name, "read_char")) {
-            expect(queue_size(t->e->children) == 1, "Error: Function %s expects no parameters.\n", name);
+        } else if (name == HASH_OF_READ_CHAR) {
+            expect(queue_size(t->e->children) == 1,
+                    "Error: Function 'read_char' expects no parameters.\n");
             char c;
             scanf(" %c", &c);
             t->res = new_result(c, NULL, PrimitiveChar);
 
-        } else if (streq(name, "print")) {
+        } else if (name == HASH_OF_PRINT) {
             expect(queue_size(t->e->children) == 2,
                     "Invalid number of arguments for 'print' function.\n");
             Expression * ec = queue_begin(t->e->children)->next->data;
-            Thunk * tt = new_thunk("*", ec, t->context);
-            execute(tt);
+            Thunk * tt = new_thunk(ANONYMOUS_THUNK_HASH, ec, t->context);
+            execute(tt, symbols);
             // perform print:
             print_result(tt->res);
             destroy_thunk(tt);
             t->res = new_result(0, NULL, PrimitiveNULL);
 
-        } else if (streq(name, "match")) {
+        } else if (name == HASH_OF_MATCH) {
             // TODO: Add match to grammar, and move this sanitization to the parser...
             expect(queue_size(t->e->children) >= 2,
                     "Error: Too few parameters to 'match' statement.\n");
@@ -881,8 +960,8 @@ void execute(Thunk * t)
             do {
                 Expression * ec_given = queue_begin(t->e->children)->next->data;
                 Queue/*<Thunk>*/ * context = new_queue(t->context);
-                Thunk * tc_given = new_thunk("*", ec_given, context);
-                execute(tc_given);
+                Thunk * tc_given = new_thunk(ANONYMOUS_THUNK_HASH, ec_given, context);
+                execute(tc_given, symbols);
                 res_given = tc_given->res;
                 destroy_thunk(tc_given);
                 destroy_queue(context);
@@ -902,7 +981,8 @@ void execute(Thunk * t)
 
                 // process the third value
                 expect(ec_sep->type == Id, "Error: Expected ':' token in match statement.\n");
-                expect(streq(ec_sep->value, ":"), "Error: Expected ':' token in match statement.\n");
+                expect(ec_sep->value == HASH_OF_COLON,
+                        "Error: Expected ':' token in match statement.\n");
                 expect(cur->next != end,
                         "Error: Expected another parameter in match statement.\n");
                 cur = cur->next;
@@ -915,16 +995,16 @@ void execute(Thunk * t)
                 Result * res_test;
                 do {
                     Queue/*<Thunk>*/ * context = new_queue(t->context);
-                    Thunk * tc_test = new_thunk("*", ec_test, context);
-                    execute(tc_test);
+                    Thunk * tc_test = new_thunk(ANONYMOUS_THUNK_HASH, ec_test, context);
+                    execute(tc_test, symbols);
                     res_test = tc_test->res;
                     destroy_thunk(tc_test);
                     destroy_queue(context);
                 } while (0);
                 if (result_equal(res_given, res_test)) {
                     Queue/*<Thunk>*/ * context = new_queue(t->context);
-                    Thunk * tc_ans = new_thunk("*", ec_ans, context);
-                    execute(tc_ans);
+                    Thunk * tc_ans = new_thunk(ANONYMOUS_THUNK_HASH, ec_ans, context);
+                    execute(tc_ans, symbols);
                     t->res = tc_ans->res;
                     destroy_thunk(tc_ans);
                     destroy_queue(context);
@@ -936,43 +1016,48 @@ void execute(Thunk * t)
                 t->res = new_result(0, NULL, PrimitiveNULL);
             }
 
-        } else if (streq(name, "?")) {
+        } else if (name == HASH_OF_QUESTION) {
             expect(queue_size(t->e->children) == 4,
                     "Expected 4 arguments for '?' statement.\n");
             Expression * e_test = queue_begin(t->e->children)->next->data;
             Queue/*<Thunk>*/ * context = new_queue(t->context);
-            Thunk * t_test = new_thunk("*", e_test, context);
-            execute(t_test);
+            Thunk * t_test = new_thunk(ANONYMOUS_THUNK_HASH, e_test, context);
+            execute(t_test, symbols);
             Expression * ec;
             if (result_is_true(t_test->res)) {
                 ec = queue_begin(t->e->children)->next->next->data;
             } else {
                 ec = queue_begin(t->e->children)->next->next->next->data;
             }
-            Thunk * ans = new_thunk("*", ec, t->context);
-            execute(ans);
+            Thunk * ans = new_thunk(ANONYMOUS_THUNK_HASH, ec, t->context);
+            execute(ans, symbols);
             t->res = ans->res;
             destroy_thunk(ans);
             destroy_thunk(t_test);
             destroy_queue(context);
 
-        } else if (strlen(name) == 1 && member_of(name[0], "+-*/%")) {
+        } else if (name == HASH_OF_PLUS   ||
+                   name == HASH_OF_MINUS  ||
+                   name == HASH_OF_TIMES  ||
+                   name == HASH_OF_DIVIDE ||
+                   name == HASH_OF_PERCENT) {
             expect(queue_size(t->e->children) == 3,
-                    "Invalid number of arguments for '%s' function.\n", name);
+                    "Invalid number of arguments for '%s' function.\n",
+                    (char *)hashtable_find(symbols, name)->value);
             Expression * ea = queue_begin(t->e->children)->next->data;
             Expression * eb = queue_begin(t->e->children)->next->next->data;
             Queue/*<Thunk>*/ * context_a = new_queue(t->context);
             Queue/*<Thunk>*/ * context_b = new_queue(t->context);
-            Thunk * tta = new_thunk("*", ea, context_a);
-            Thunk * ttb = new_thunk("*", eb, context_b);
-            execute(tta);
-            execute(ttb);
+            Thunk * tta = new_thunk(ANONYMOUS_THUNK_HASH, ea, context_a);
+            Thunk * ttb = new_thunk(ANONYMOUS_THUNK_HASH, eb, context_b);
+            execute(tta, symbols);
+            execute(ttb, symbols);
             long long num;
-            if      (name[0] == '+') num = tta->res->num + ttb->res->num;
-            else if (name[0] == '-') num = tta->res->num - ttb->res->num;
-            else if (name[0] == '*') num = tta->res->num * ttb->res->num;
-            else if (name[0] == '/') num = tta->res->num / ttb->res->num;
-            else if (name[0] == '%') num = tta->res->num % ttb->res->num;
+            if      (name == HASH_OF_PLUS)    num = tta->res->num + ttb->res->num;
+            else if (name == HASH_OF_MINUS)   num = tta->res->num - ttb->res->num;
+            else if (name == HASH_OF_TIMES)   num = tta->res->num * ttb->res->num;
+            else if (name == HASH_OF_DIVIDE)  num = tta->res->num / ttb->res->num;
+            else if (name == HASH_OF_PERCENT) num = tta->res->num % ttb->res->num;
             t->res = new_result(num, NULL, PrimitiveNumber);
             // Note: The result may have been reused from somewhere else,
             //       and it still may be used elsewhere, so we cannot destroy it yet.
@@ -981,17 +1066,17 @@ void execute(Thunk * t)
             destroy_queue(context_a);
             destroy_queue(context_b);
 
-        } else if (streq(name, "=")) {
+        } else if (name == HASH_OF_EQUAL) {
             expect(queue_size(t->e->children) == 3,
-                    "Invalid number of arguments for '%s' function.\n", name);
+                    "Invalid number of arguments for '=' function.\n");
             Expression * ea = queue_begin(t->e->children)->next->data;
             Expression * eb = queue_begin(t->e->children)->next->next->data;
             Queue/*<Thunk>*/ * context_a = new_queue(t->context);
             Queue/*<Thunk>*/ * context_b = new_queue(t->context);
-            Thunk * tta = new_thunk("*", ea, context_a);
-            Thunk * ttb = new_thunk("*", eb, context_b);
-            execute(tta);
-            execute(ttb);
+            Thunk * tta = new_thunk(ANONYMOUS_THUNK_HASH, ea, context_a);
+            Thunk * ttb = new_thunk(ANONYMOUS_THUNK_HASH, eb, context_b);
+            execute(tta, symbols);
+            execute(ttb, symbols);
             if (result_equal(tta->res, ttb->res)) {
                 t->res = new_result(0, NULL, PrimitiveTRUE);
             } else {
@@ -1004,28 +1089,32 @@ void execute(Thunk * t)
 
         } else {
             Function * userfunc = find_function(name);
-            expect(userfunc != NULL, "Error: Couldn't find function named %s!\n", name);
+            expect(userfunc != NULL,
+                    "Error: Couldn't find function named %s!\n",
+                    (char *)hashtable_find(symbols, name)->value);
             int num_params_expected = queue_size(userfunc->params);
             int num_params_supplied = queue_size(t->e->children) - 1; // ignore the function name
             expect(num_params_expected == num_params_supplied,
                     "Error: Expected %d parameters for function %s, but got %d.\n",
-                    num_params_expected, name, num_params_supplied);
+                    num_params_expected,
+                    (char *)hashtable_find(symbols, name)->value,
+                    num_params_supplied);
             // Create a new thunk, with an empty context.
             Queue/*<Thunk>*/ * context = new_queue(NULL);
-            Thunk * tf = new_thunk("*", userfunc->def, context);
+            Thunk * tf = new_thunk(ANONYMOUS_THUNK_HASH, userfunc->def, context);
             // For each function parameter, create a new thunk with the context
             // of the current thunk being executed,
             // and add it to the function thunk's context.
             // That way, the only Ids visible in the function execution are the parameters.
             Node * cur = queue_begin(t->e->children)->next;
             queue_foreach(node, userfunc->params) {
-                char * param_id = node->data;
+                HASH_TYPE param_id = (HASH_TYPE)node->data;
                 Expression * ec = cur->data;
                 Thunk * tp = new_thunk(param_id, ec, t->context);
                 queue_push(tf->context, tp);
                 cur = cur->next;
             }
-            execute(tf);
+            execute(tf, symbols);
             t->res = tf->res;
             // cleanup:
             queue_foreach(node, tf->context) {
@@ -1040,18 +1129,20 @@ void execute(Thunk * t)
         expect(false, "Error (internal): List type not implemented yet!\n");
 
     } else if (t->e->type == Id) {
-        char * name = t->e->value;
+        HASH_TYPE name = t->e->value;
         bool found = false;
         Thunk * tc;
         queue_foreach(node, t->context) {
             tc = node->data;
-            if (streq(tc->name, name)) {
+            if (tc->name == name) {
                 found = true;
                 break;
             }
         }
-        expect(found, "Error: Symbol %s not found.\n", name);
-        execute(tc);
+        expect(found,
+                "Error: Symbol %s not found.\n",
+                (char *)hashtable_find(symbols, name)->value);
+        execute(tc, symbols);
         t->res = tc->res;
 
     } else if (t->e->type == Primitive) {
@@ -1068,16 +1159,18 @@ void execute(Thunk * t)
             t->res = new_result(0, NULL, PrimitiveFALSE);
 
         } else if (t->e->ptype == PrimitiveString) {
-            t->res = new_result(1, t->e->value, PrimitiveString);
+            t->res = new_result(1, t->e->str, PrimitiveString);
 
         } else if (t->e->ptype == PrimitiveNumber) {
-            t->res = new_result(atoi(t->e->value), NULL, PrimitiveNumber);
+            t->res = new_result(t->e->value, NULL, PrimitiveNumber);
 
         } else if (t->e->ptype == PrimitiveChar) {
-            t->res = new_result(t->e->value[0], NULL, PrimitiveChar);
+            t->res = new_result(t->e->value, NULL, PrimitiveChar);
 
         } else {
-            expect(false, "Error: Couldn't match primitive expression '%s'.\n", t->e->value);
+            expect(false,
+                    "Error: Couldn't match primitive expression '%s'.\n",
+                    (char *)hashtable_find(symbols, t->e->value)->value);
         }
     }
 }
@@ -1096,15 +1189,15 @@ int main(int argc, char * argv[])
     // lex/parse program into rooted tree:
     Lexer * lex = new_lexer(input);
     Expression * program = parse_program(lex);
-    //print_expression(program, 0);
+    //print_expression(program, lex->symbols, 0);
 
     // Initialize Function Table:
     ftable = new_queue(NULL);
 
     // Execute program:
     Queue/*<Thunk>*/ * context = new_queue(NULL);
-    Thunk * thunk = new_thunk("*", program, context);
-    execute(thunk);
+    Thunk * thunk = new_thunk(ANONYMOUS_THUNK_HASH, program, context);
+    execute(thunk, lex->symbols);
 
     // clean up
     destroy_thunk(thunk);
