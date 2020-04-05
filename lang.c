@@ -19,7 +19,6 @@
 #define SINGLE_CHAR_TOKENS "()[],+-*/=?:"
 #define SYSTEM_FUNCTION_TOKENS "+-*/=?%:"
 #define DEFAULT_HASHTABLE_SIZE 100
-#define ANONYMOUS_THUNK_HASH hash_string("*")
 #define HASH_TYPE long long
 #define streq(a, b) (strcmp((a), (b)) == 0)
 
@@ -582,6 +581,7 @@ bool parse_primitive(Expression * root, Lexer * lex)
     else if (is_true)  ptype = PrimitiveTRUE;
     else if (is_false) ptype = PrimitiveFALSE;
     else if (is_null)  ptype = PrimitiveNULL;
+    else               ptype = PrimitiveANY;
     HASH_TYPE key;
     char * str;
     if (is_str) {
@@ -672,7 +672,7 @@ bool parse_statement(Expression * root, Lexer * lex)
 
 Expression * parse_program(Lexer * lex)
 {
-    Expression * e = new_expression(ANONYMOUS_THUNK_HASH, Program, PrimitiveANY, NULL);
+    Expression * e = new_expression(HASH_OF_TIMES, Program, PrimitiveANY, NULL);
     while (parse_statement(e, lex));
     return e;
 }
@@ -860,7 +860,7 @@ void execute(Thunk * t, HashTable * symbols)
         Queue/*<Thunk>*/ * context = new_queue(t->context);
         queue_foreach(node, t->e->children) {
             ec = node->data;
-            tc = new_thunk(ANONYMOUS_THUNK_HASH, ec, context);
+            tc = new_thunk(HASH_OF_TIMES, ec, context);
             execute(tc, symbols);
             t->res = tc->res;
             destroy_thunk(tc);
@@ -902,7 +902,7 @@ void execute(Thunk * t, HashTable * symbols)
             queue_foreach(node, t->e->children) {
                 if (i != 0) {
                     ec = node->data;
-                    tc = new_thunk(ANONYMOUS_THUNK_HASH, ec, context);
+                    tc = new_thunk(HASH_OF_TIMES, ec, context);
                     execute(tc, symbols);
                     t->res = tc->res;
                     destroy_thunk(tc);
@@ -930,21 +930,21 @@ void execute(Thunk * t, HashTable * symbols)
             expect(queue_size(t->e->children) == 1,
                     "Error: Function 'read_int' expects no parameters.\n");
             long long num;
-            scanf(" %lld", &num);
+            expect(scanf(" %lld", &num) != EOF, "Error: read_int reached end of file.\n");
             t->res = new_result(num, NULL, PrimitiveNumber);
 
         } else if (name == HASH_OF_READ_CHAR) {
             expect(queue_size(t->e->children) == 1,
                     "Error: Function 'read_char' expects no parameters.\n");
             char c;
-            scanf(" %c", &c);
+            expect(scanf(" %c", &c) != EOF, "Error: read_char reached end of file.\n");
             t->res = new_result(c, NULL, PrimitiveChar);
 
         } else if (name == HASH_OF_PRINT) {
             expect(queue_size(t->e->children) == 2,
                     "Invalid number of arguments for 'print' function.\n");
             Expression * ec = queue_begin(t->e->children)->next->data;
-            Thunk * tt = new_thunk(ANONYMOUS_THUNK_HASH, ec, t->context);
+            Thunk * tt = new_thunk(HASH_OF_TIMES, ec, t->context);
             execute(tt, symbols);
             // perform print:
             print_result(tt->res);
@@ -959,12 +959,10 @@ void execute(Thunk * t, HashTable * symbols)
             Result * res_given;
             do {
                 Expression * ec_given = queue_begin(t->e->children)->next->data;
-                Queue/*<Thunk>*/ * context = new_queue(t->context);
-                Thunk * tc_given = new_thunk(ANONYMOUS_THUNK_HASH, ec_given, context);
+                Thunk * tc_given = new_thunk(HASH_OF_TIMES, ec_given, t->context);
                 execute(tc_given, symbols);
                 res_given = tc_given->res;
                 destroy_thunk(tc_given);
-                destroy_queue(context);
             } while (0);
 
             Node * cur = queue_begin(t->e->children)->next->next,
@@ -994,20 +992,16 @@ void execute(Thunk * t, HashTable * symbols)
                 // Compute this test:
                 Result * res_test;
                 do {
-                    Queue/*<Thunk>*/ * context = new_queue(t->context);
-                    Thunk * tc_test = new_thunk(ANONYMOUS_THUNK_HASH, ec_test, context);
+                    Thunk * tc_test = new_thunk(HASH_OF_TIMES, ec_test, t->context);
                     execute(tc_test, symbols);
                     res_test = tc_test->res;
                     destroy_thunk(tc_test);
-                    destroy_queue(context);
                 } while (0);
                 if (result_equal(res_given, res_test)) {
-                    Queue/*<Thunk>*/ * context = new_queue(t->context);
-                    Thunk * tc_ans = new_thunk(ANONYMOUS_THUNK_HASH, ec_ans, context);
+                    Thunk * tc_ans = new_thunk(HASH_OF_TIMES, ec_ans, t->context);
                     execute(tc_ans, symbols);
                     t->res = tc_ans->res;
                     destroy_thunk(tc_ans);
-                    destroy_queue(context);
                     matched = true;
                     break;
                 }
@@ -1020,8 +1014,7 @@ void execute(Thunk * t, HashTable * symbols)
             expect(queue_size(t->e->children) == 4,
                     "Expected 4 arguments for '?' statement.\n");
             Expression * e_test = queue_begin(t->e->children)->next->data;
-            Queue/*<Thunk>*/ * context = new_queue(t->context);
-            Thunk * t_test = new_thunk(ANONYMOUS_THUNK_HASH, e_test, context);
+            Thunk * t_test = new_thunk(HASH_OF_TIMES, e_test, t->context);
             execute(t_test, symbols);
             Expression * ec;
             if (result_is_true(t_test->res)) {
@@ -1029,12 +1022,11 @@ void execute(Thunk * t, HashTable * symbols)
             } else {
                 ec = queue_begin(t->e->children)->next->next->next->data;
             }
-            Thunk * ans = new_thunk(ANONYMOUS_THUNK_HASH, ec, t->context);
+            Thunk * ans = new_thunk(HASH_OF_TIMES, ec, t->context);
             execute(ans, symbols);
             t->res = ans->res;
             destroy_thunk(ans);
             destroy_thunk(t_test);
-            destroy_queue(context);
 
         } else if (name == HASH_OF_PLUS   ||
                    name == HASH_OF_MINUS  ||
@@ -1046,35 +1038,30 @@ void execute(Thunk * t, HashTable * symbols)
                     (char *)hashtable_find(symbols, name)->value);
             Expression * ea = queue_begin(t->e->children)->next->data;
             Expression * eb = queue_begin(t->e->children)->next->next->data;
-            Queue/*<Thunk>*/ * context_a = new_queue(t->context);
-            Queue/*<Thunk>*/ * context_b = new_queue(t->context);
-            Thunk * tta = new_thunk(ANONYMOUS_THUNK_HASH, ea, context_a);
-            Thunk * ttb = new_thunk(ANONYMOUS_THUNK_HASH, eb, context_b);
+            Thunk * tta = new_thunk(HASH_OF_TIMES, ea, t->context);
+            Thunk * ttb = new_thunk(HASH_OF_TIMES, eb, t->context);
             execute(tta, symbols);
             execute(ttb, symbols);
-            long long num;
+            long long num = 0;
             if      (name == HASH_OF_PLUS)    num = tta->res->num + ttb->res->num;
             else if (name == HASH_OF_MINUS)   num = tta->res->num - ttb->res->num;
             else if (name == HASH_OF_TIMES)   num = tta->res->num * ttb->res->num;
             else if (name == HASH_OF_DIVIDE)  num = tta->res->num / ttb->res->num;
             else if (name == HASH_OF_PERCENT) num = tta->res->num % ttb->res->num;
+            else                              num = 0;
             t->res = new_result(num, NULL, PrimitiveNumber);
             // Note: The result may have been reused from somewhere else,
             //       and it still may be used elsewhere, so we cannot destroy it yet.
             destroy_thunk(tta);
             destroy_thunk(ttb);
-            destroy_queue(context_a);
-            destroy_queue(context_b);
 
         } else if (name == HASH_OF_EQUAL) {
             expect(queue_size(t->e->children) == 3,
                     "Invalid number of arguments for '=' function.\n");
             Expression * ea = queue_begin(t->e->children)->next->data;
             Expression * eb = queue_begin(t->e->children)->next->next->data;
-            Queue/*<Thunk>*/ * context_a = new_queue(t->context);
-            Queue/*<Thunk>*/ * context_b = new_queue(t->context);
-            Thunk * tta = new_thunk(ANONYMOUS_THUNK_HASH, ea, context_a);
-            Thunk * ttb = new_thunk(ANONYMOUS_THUNK_HASH, eb, context_b);
+            Thunk * tta = new_thunk(HASH_OF_TIMES, ea, t->context);
+            Thunk * ttb = new_thunk(HASH_OF_TIMES, eb, t->context);
             execute(tta, symbols);
             execute(ttb, symbols);
             if (result_equal(tta->res, ttb->res)) {
@@ -1084,8 +1071,6 @@ void execute(Thunk * t, HashTable * symbols)
             }
             destroy_thunk(tta);
             destroy_thunk(ttb);
-            destroy_queue(context_a);
-            destroy_queue(context_b);
 
         } else {
             Function * userfunc = find_function(name);
@@ -1101,7 +1086,7 @@ void execute(Thunk * t, HashTable * symbols)
                     num_params_supplied);
             // Create a new thunk, with an empty context.
             Queue/*<Thunk>*/ * context = new_queue(NULL);
-            Thunk * tf = new_thunk(ANONYMOUS_THUNK_HASH, userfunc->def, context);
+            Thunk * tf = new_thunk(HASH_OF_TIMES, userfunc->def, context);
             // For each function parameter, create a new thunk with the context
             // of the current thunk being executed,
             // and add it to the function thunk's context.
@@ -1193,7 +1178,7 @@ int main(int argc, char * argv[])
 
     // Execute program:
     Queue/*<Thunk>*/ * context = new_queue(NULL);
-    Thunk * thunk = new_thunk(ANONYMOUS_THUNK_HASH, program, context);
+    Thunk * thunk = new_thunk(HASH_OF_TIMES, program, context);
     execute(thunk, lex->symbols);
 
     // clean up

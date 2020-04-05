@@ -1,1 +1,1 @@
-gcc lang.c -Wall -Wshadow -g -o lang
+gcc lang.c -Wall -Wshadow -Ofast -o lang
