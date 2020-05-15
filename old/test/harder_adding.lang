@@ -1,2 +1,0 @@
-sum a b c d => (add (add a b) (add c d))
-(print_int (sum 1 2 3 4))

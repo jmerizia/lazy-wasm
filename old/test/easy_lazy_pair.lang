@@ -1,3 +1,0 @@
-(print_int (pair 1 2))
-(print_int (first (pair 1 2)))
-(print_int (second (pair 1 2)))
