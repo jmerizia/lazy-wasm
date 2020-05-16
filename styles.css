@@ -1,0 +1,22 @@
+#run, #vim-on, #vim-off {
+    margin-bottom: 5px;
+}
+
+h1, h3 {
+    margin-top: 20px;
+}
+
+.CodeMirror {
+    height: auto;
+    font-size: 14px;
+}
+
+.stdout-msg {
+    background-color: lightgrey;
+    padding: 3px;
+}
+
+.stderr-msg {
+    background-color: pink;
+    padding: 3px;
+}

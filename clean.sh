@@ -1,1 +1,1 @@
-rm -rf lang
+rm -rf lang lang.js lang.wasm lang.data

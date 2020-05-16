@@ -484,7 +484,7 @@ char * lexer_seek(Lexer * lex)
     while (member_of(lex->input[i], " \r\n\t")) i++;
 
     // skip comment
-    while (lex->input[i] == '#') {
+    while (lex->input[i] == ';') {
         while (lex->input[i] != '\n' && lex->input[i] != '\0') i++;
         if (lex->input[i] == '\n') i++;
 
@@ -562,7 +562,7 @@ bool parse_primitive (Expression * root, Lexer * lex);
 bool parse_primitive(Expression * root, Lexer * lex)
 {
     char * token = lexer_seek(lex);
-    expect(token != NULL, "Error: Expected token.\n");
+    expect(token != NULL, "Error: Expected token in primitive.\n");
     int len = strlen(token);
     bool is_num = strcmp(token, "0") == 0 ? true : atoi(token) != 0;
     bool is_str = token[0] == '\"' && token[len-1] == '\"';
@@ -605,7 +605,7 @@ bool parse_primitive(Expression * root, Lexer * lex)
 bool parse_id(Expression * root, Lexer * lex)
 {
     char * token = lexer_seek(lex);
-    expect(token != NULL, "Error: Expected token.\n");
+    expect(token != NULL, "Error: Expected token in id.\n");
     HASH_TYPE key = hash_string(token);
     Expression * e = new_expression(key, Id, PrimitiveANY, NULL);
     bool is_id = true;
@@ -629,7 +629,7 @@ bool parse_id(Expression * root, Lexer * lex)
 bool parse_list(Expression * root, Lexer * lex)
 {
     char * token = lexer_seek(lex);
-    expect(token != NULL, "Error: Expected token.\n");
+    expect(token != NULL, "Error: Expected token in list.\n");
     HASH_TYPE key = hash_string(token);
     Expression * e = new_expression(key, List, PrimitiveANY, NULL);
     if (strcmp(token, "[") != 0) {

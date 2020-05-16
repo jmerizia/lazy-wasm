@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en-us">
+    <head>
+        <meta charset="utf-8">
+        <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+                integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0="
+                crossorigin="anonymous"></script>
+        <script src='https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.50.2/codemirror.js'> </script>
+        <script src='https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.50.2/mode/commonlisp/commonlisp.js'> </script>
+        <script src='https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.50.2/keymap/vim.js'> </script>
+        <script src='https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.50.2/keymap/sublime.js'> </script>
+        <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.50.2/codemirror.css'>
+        <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.50.2/theme/monokai.css'>
+        <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.5.0/css/bootstrap.css'>
+        <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.5.0/css/bootstrap-grid.css'>
+        <link rel="stylesheet" href="https://use.fontawesome.com/6409746a8b.css">
+        <link rel='stylesheet' href='/styles.css'>
+    </head>
+    <body>
+        <div class='container'>
+            <div class='row'>
+                <div class='col-6'>
+                    <h1>WASM Functional Language</h1>
+                    <p>
+                        This is an implementation of a lisp-like functional language
+                        with lazy evaluation and first-class functions.
+                        I ported it to WASM with
+                        <a href='https://github.com/emscripten-core/emscripten'>Emscripten</a>,
+                        so it can be used completely within the browser!
+                        See the
+                        <a href='https://github.com/jmerizia/functional-language-exercise/blob/master/grammar.txt'>
+                            grammar
+                        </a>
+                        for help.
+                    </p>
+                    <p>
+                    </p>
+                    <p>
+                        Source code:
+                        <a href='https://github.com/jmerizia/functional-language-exercise'>
+                            https://github.com/jmerizia/functional-language-exercise
+                        </a>
+                    </p>
+                </div>
+            </div>
+            <div class='row'>
+                <div class='col-8'>
+                    <div class='text-right'>
+                        <button id='vim-on' type='button' class='btn btn-info'>
+                            vim on <i class="fa fa-keyboard-o"></i>
+                        </button>
+                        <button id='vim-off' type='button' class='btn btn-secondary'>
+                            vim off <i class="fa fa-keyboard-o"></i>
+                        </button>
+                        <button id='run' type='button' class='btn btn-primary'>
+                            Run <i class="fa fa-play-circle"></i>
+                        </button>
+                    </div>
+                    <div id='cm'></div>
+                    <h3>Limitations</h3>
+                    <p>
+                        Some of the error messages from the tokenizer aren't very helpful.
+                        It would be nice to have error messages with line numbers.
+                    </p>
+                    <p>
+                        The language is very simple, and I haven't had the time to build up the
+                        standard library. Perhaps I'll work on that some other time.
+                    </p>
+                </div>
+                <div class='col-4'>
+                    <p><b>Result</b></p>
+                    <div id='result'></div>
+                </div>
+            </div>
+            <div class='row'>
+                <div class='col-12 text-center'>
+                    <br>
+                    <p>made by <a href='https://jacob.merizian.com'>Jacob Merizian</a></p>
+                </div>
+            </div>
+        </div>
+    </body>
+    <script type='text/javascript' src='/lang.js'></script>
+    <script type='text/javascript' src='/main.js'></script>
+</html>
+
+

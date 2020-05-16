@@ -2,3 +2,5 @@ lang
 *.swp
 *.swo
 *.o
+lang.js
+lang.wasm
